@@ -1,0 +1,35 @@
+{
+  "source": "AgriSETA Active Directory (simulated export)",
+  "exported_at": "2026-11-17T08:00:00Z",
+  "deactivate_missing": false,
+  "users": [
+    {
+      "external_id": "a1b2c3d4-0001-4e5f-8a9b-000000000001",
+      "first_name": "Thandi",
+      "last_name": "Mokoena",
+      "email": "thandi.mokoena@agriseta.co.za",
+      "ad_group": "AGR-IAA-CAE"
+    },
+    {
+      "external_id": "a1b2c3d4-0002-4e5f-8a9b-000000000002",
+      "first_name": "Pieter",
+      "last_name": "van der Merwe",
+      "email": "pieter.vdmerwe@agriseta.co.za",
+      "ad_group": "AGR-IAA-AUDITORS"
+    },
+    {
+      "external_id": "a1b2c3d4-0003-4e5f-8a9b-000000000003",
+      "first_name": "Naledi",
+      "last_name": "Khumalo",
+      "email": "naledi.khumalo@agriseta.co.za",
+      "ad_group": "AGR-IAA-AUDITORS"
+    },
+    {
+      "external_id": "a1b2c3d4-0004-4e5f-8a9b-000000000004",
+      "first_name": "Johan",
+      "last_name": "Pretorius",
+      "email": "johan.pretorius@agriseta.co.za",
+      "ad_group": "AGR-IAA-ADMINS"
+    }
+  ]
+}

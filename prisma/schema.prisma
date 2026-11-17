@@ -1,0 +1,881 @@
+// Reconstructed from Polaris client bundle (Prisma ScalarFieldEnum leaks)
+// Types inferred from column names — verify before migrating
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model AnnualAuditPlanPeriod {
+  id String   @id @default(ulid())
+  name String?
+  description String?
+  start_date DateTime?
+  end_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  annualAuditPlans_period   AnnualAuditPlan[] @relation("period")
+  @@map("annual_audit_plan_period")
+}
+
+model AnnualAuditPlan {
+  id String   @id @default(ulid())
+  name String?
+  description String?
+  r_period   AnnualAuditPlanPeriod? @relation("period", fields: [period_id], references: [id])
+  period_id   String?
+  r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
+  prepared_by_id   String?
+  prepared_date DateTime?
+  r_authorised_by   User? @relation("authorised_by", fields: [authorised_by_id], references: [id])
+  authorised_by_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  plannedEngagements_annual_audit_plan   PlannedEngagement[] @relation("annual_audit_plan")
+  engagements_annual_audit_plan   Engagement[] @relation("annual_audit_plan")
+  @@map("annual_audit_plan")
+}
+
+model GuidingDocument {
+  id String   @id @default(ulid())
+  name String?
+  description String?
+  files Json
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("guiding_document")
+}
+
+model PlannedEngagement {
+  id String   @id @default(ulid())
+  reference String?
+  r_engagement_type   EngagementType? @relation("engagement_type", fields: [engagement_type_id], references: [id])
+  engagement_type_id   String?
+  name String?
+  objectives String?
+  scope String?
+  location String?
+  r_assigned_senior_auditor   User? @relation("assigned_senior_auditor", fields: [assigned_senior_auditor_id], references: [id])
+  assigned_senior_auditor_id   String?
+  planned_start_date DateTime?
+  planned_end_date DateTime?
+  planned_budget Decimal?
+  actual_start_date DateTime?
+  actual_end_date DateTime?
+  actual_budget Decimal?
+  r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
+  prepared_by_id   String?
+  prepared_date DateTime?
+  r_authorised_by   User? @relation("authorised_by", fields: [authorised_by_id], references: [id])
+  authorised_by_id   String?
+  authorised_date DateTime?
+  r_annual_audit_plan   AnnualAuditPlan? @relation("annual_audit_plan", fields: [annual_audit_plan_id], references: [id])
+  annual_audit_plan_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagements_planned_engagement   Engagement[] @relation("planned_engagement")
+  riskAssessments_linked_planned_engagement   RiskAssessment[] @relation("risk_linked_planned_engagement")
+  @@map("planned_engagement")
+}
+
+model AuditProgramItemReviewNote {
+  id String   @id @default(ulid())
+  r_engagement_audit_program_item   EngagementAuditProgramItem? @relation("engagement_audit_program_item", fields: [engagement_audit_program_item_id], references: [id])
+  engagement_audit_program_item_id   String?
+  r_review_note   ReviewNote? @relation("review_note", fields: [review_note_id], references: [id])
+  review_note_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("audit_program_item_review_note")
+}
+
+model EngagementAuditProgramItem {
+  id String   @id @default(ulid())
+  risk_reference String?
+  risk String?
+  audit_objective String?
+  audit_procedure String?
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
+  prepared_by_engagement_auditor_id   String?
+  prepared_date DateTime?
+  r_nominated_reviewer   EngagementAuditor? @relation("nominated_reviewer", fields: [nominated_reviewer_id], references: [id])
+  nominated_reviewer_id   String?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  auditProgramItemReviewNotes_engagement_audit_program_item   AuditProgramItemReviewNote[] @relation("engagement_audit_program_item")
+  engagementFieldworkDocuments_engagement_audit_program_item   EngagementFieldworkDocument[] @relation("engagement_audit_program_item")
+  @@map("engagement_audit_program_item")
+}
+
+model DeclarationSection {
+  id String   @id @default(ulid())
+  name String?
+  custom_name String?
+  description String?
+  prescribed Boolean  @default(false)
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  declarations_declaration_section   Declaration[] @relation("declaration_section")
+  @@map("declaration_section")
+}
+
+model Declaration {
+  id String   @id @default(ulid())
+  declaration_text String?
+  custom_text String?
+  prescribed Boolean  @default(false)
+  r_declaration_section   DeclarationSection? @relation("declaration_section", fields: [declaration_section_id], references: [id])
+  declaration_section_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagementAuditorDeclarations_declaration   EngagementAuditorDeclaration[] @relation("declaration")
+  @@map("declaration")
+}
+
+model EngagementAuditorDeclaration {
+  id String   @id @default(ulid())
+  confirmation_date DateTime?
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_engagement_auditor   EngagementAuditor? @relation("engagement_auditor", fields: [engagement_auditor_id], references: [id])
+  engagement_auditor_id   String?
+  r_declaration   Declaration? @relation("declaration", fields: [declaration_id], references: [id])
+  declaration_id   String?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("engagement_auditor_declaration")
+}
+
+model EngagementAuditor {
+  id String   @id @default(ulid())
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_user   User? @relation("user", fields: [user_id], references: [id])
+  user_id   String?
+  position_on_audit String? // EngagementAuditorRole
+  qualifications String?
+  experience String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagementAuditProgramItems_prepared_by_engagement_auditor   EngagementAuditProgramItem[] @relation("prepared_by_engagement_auditor")
+  engagementAuditProgramItems_nominated_reviewer   EngagementAuditProgramItem[] @relation("nominated_reviewer")
+  engagementAuditProgramItems_authorised_by_engagement_auditor   EngagementAuditProgramItem[] @relation("authorised_by_engagement_auditor")
+  engagementAuditorDeclarations_engagement_auditor   EngagementAuditorDeclaration[] @relation("engagement_auditor")
+  engagementAuditorDeclarations_authorised_by_engagement_auditor   EngagementAuditorDeclaration[] @relation("authorised_by_engagement_auditor")
+  engagementFieldworkDocuments_prepared_by_engagement_auditor   EngagementFieldworkDocument[] @relation("prepared_by_engagement_auditor")
+  engagementFieldworkDocuments_nominated_reviewer   EngagementFieldworkDocument[] @relation("nominated_reviewer")
+  engagementFieldworkDocuments_authorised_by_engagement_auditor   EngagementFieldworkDocument[] @relation("authorised_by_engagement_auditor")
+  engagementFindingAndRecommendationss_prepared_by_engagement_auditor   EngagementFindingAndRecommendations[] @relation("prepared_by_engagement_auditor")
+  engagementFindingAndRecommendationss_authorised_by_engagement_auditor   EngagementFindingAndRecommendations[] @relation("authorised_by_engagement_auditor")
+  engagementPlanningDocuments_prepared_by_engagement_auditor   EngagementPlanningDocument[] @relation("prepared_by_engagement_auditor")
+  engagementPlanningDocuments_nominated_reviewer   EngagementPlanningDocument[] @relation("nominated_reviewer")
+  engagementPlanningDocuments_authorised_by_engagement_auditor   EngagementPlanningDocument[] @relation("authorised_by_engagement_auditor")
+  engagementReportDocuments_prepared_by_engagement_auditor   EngagementReportDocument[] @relation("prepared_by_engagement_auditor")
+  engagementReportDocuments_nominated_reviewer   EngagementReportDocument[] @relation("nominated_reviewer")
+  engagementReportDocuments_authorised_by_engagement_auditor   EngagementReportDocument[] @relation("authorised_by_engagement_auditor")
+  reviewNotes_cleared_by_engagement_auditor   ReviewNote[] @relation("cleared_by_engagement_auditor")
+  reviewNotes_verified_by_engagement_auditor   ReviewNote[] @relation("verified_by_engagement_auditor")
+  reviewNotes_reviewer_engagement_auditor   ReviewNote[] @relation("reviewer_engagement_auditor")
+  @@map("engagement_auditor")
+}
+
+model EngagementType {
+  id String   @id @default(ulid())
+  name String?
+  description String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  plannedEngagements_engagement_type   PlannedEngagement[] @relation("engagement_type")
+  engagements_engagement_type   Engagement[] @relation("engagement_type")
+  @@map("engagement_type")
+}
+
+model Engagement {
+  id String   @id @default(ulid())
+  r_annual_audit_plan   AnnualAuditPlan? @relation("annual_audit_plan", fields: [annual_audit_plan_id], references: [id])
+  annual_audit_plan_id   String?
+  r_engagement_type   EngagementType? @relation("engagement_type", fields: [engagement_type_id], references: [id])
+  engagement_type_id   String?
+  engagement_name String?
+  engagement_number String?
+  start_date DateTime?
+  end_date DateTime?
+  engagement_budget Decimal?
+  engagement_spend Decimal?
+  r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
+  prepared_by_id   String?
+  prepared_date DateTime?
+  r_authorised_by   User? @relation("authorised_by", fields: [authorised_by_id], references: [id])
+  authorised_by_id   String?
+  authorised_date DateTime?
+  r_planned_engagement   PlannedEngagement? @relation("planned_engagement", fields: [planned_engagement_id], references: [id])
+  planned_engagement_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagementAuditProgramItems_engagement   EngagementAuditProgramItem[] @relation("engagement")
+  engagementAuditorDeclarations_engagement   EngagementAuditorDeclaration[] @relation("engagement")
+  engagementAuditors_engagement   EngagementAuditor[] @relation("engagement")
+  engagementFieldworkDocuments_engagement   EngagementFieldworkDocument[] @relation("engagement")
+  engagementFindingAndRecommendationss_engagement   EngagementFindingAndRecommendations[] @relation("engagement")
+  engagementPlanningDocuments_engagement   EngagementPlanningDocument[] @relation("engagement")
+  engagementReportDocuments_engagement   EngagementReportDocument[] @relation("engagement")
+  reviewNotes_engagement   ReviewNote[] @relation("engagement")
+  tasks_engagement   Task[] @relation("tasks")
+  timeEntries_engagement   TimeEntry[] @relation("time_entries")
+  expenses_engagement   Expense[] @relation("expenses")
+  @@map("engagement")
+}
+
+model EngagementFieldworkDocument {
+  id String   @id @default(ulid())
+  description String?
+  document_reference String?
+  name String?
+  files Json
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
+  prepared_by_engagement_auditor_id   String?
+  prepared_date DateTime?
+  r_nominated_reviewer   EngagementAuditor? @relation("nominated_reviewer", fields: [nominated_reviewer_id], references: [id])
+  nominated_reviewer_id   String?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_engagement_audit_program_item   EngagementAuditProgramItem? @relation("engagement_audit_program_item", fields: [engagement_audit_program_item_id], references: [id])
+  engagement_audit_program_item_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  fieldworkDocumentReviewNotes_engagement_fieldwork_document   FieldworkDocumentReviewNote[] @relation("engagement_fieldwork_document")
+  engagementFindingAndRecommendationss_engagement_fieldwork_document   EngagementFindingAndRecommendations[] @relation("engagement_fieldwork_document")
+  @@map("engagement_fieldwork_document")
+}
+
+model FieldworkDocumentReviewNote {
+  id String   @id @default(ulid())
+  r_engagement_fieldwork_document   EngagementFieldworkDocument? @relation("engagement_fieldwork_document", fields: [engagement_fieldwork_document_id], references: [id])
+  engagement_fieldwork_document_id   String?
+  r_review_note   ReviewNote? @relation("review_note", fields: [review_note_id], references: [id])
+  review_note_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("fieldwork_document_review_note")
+}
+
+model EngagementFindingAndRecommendations {
+  id String   @id @default(ulid())
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_engagement_fieldwork_document   EngagementFieldworkDocument? @relation("engagement_fieldwork_document", fields: [engagement_fieldwork_document_id], references: [id])
+  engagement_fieldwork_document_id   String?
+  detailed_finding String?
+  root_cause String?
+  recommendations String?
+  management_comment String?
+  r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
+  prepared_by_engagement_auditor_id   String?
+  prepared_date DateTime?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  correctiveActions_finding   CorrectiveAction[] @relation("corrective_actions")
+  @@map("engagement_finding_and_recommendations")
+}
+
+model EngagementPlanningDocument {
+  id String   @id @default(ulid())
+  document_reference String?
+  name String?
+  description String?
+  files Json
+  link String?
+  type String? // DocumentType
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_planning_document_template   PlanningDocumentTemplate? @relation("planning_document_template", fields: [planning_document_template_id], references: [id])
+  planning_document_template_id   String?
+  r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
+  prepared_by_engagement_auditor_id   String?
+  prepared_date DateTime?
+  r_nominated_reviewer   EngagementAuditor? @relation("nominated_reviewer", fields: [nominated_reviewer_id], references: [id])
+  nominated_reviewer_id   String?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  planningDocumentReviewNotes_engagement_planning_document   PlanningDocumentReviewNote[] @relation("engagement_planning_document")
+  @@map("engagement_planning_document")
+}
+
+model PlanningDocumentReviewNote {
+  id String   @id @default(ulid())
+  r_engagement_planning_document   EngagementPlanningDocument? @relation("engagement_planning_document", fields: [engagement_planning_document_id], references: [id])
+  engagement_planning_document_id   String?
+  r_review_note   ReviewNote? @relation("review_note", fields: [review_note_id], references: [id])
+  review_note_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("planning_document_review_note")
+}
+
+model PlanningDocumentTemplate {
+  id String   @id @default(ulid())
+  name String?
+  reference String?
+  required Boolean  @default(false)
+  files Json
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagementPlanningDocuments_planning_document_template   EngagementPlanningDocument[] @relation("planning_document_template")
+  @@map("planning_document_template")
+}
+
+model EngagementReportDocument {
+  id String   @id @default(ulid())
+  description String?
+  document_reference String?
+  name String?
+  files Json
+  link String?
+  type String? // DocumentType
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_report_document_template   ReportDocumentTemplate? @relation("report_document_template", fields: [report_document_template_id], references: [id])
+  report_document_template_id   String?
+  r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
+  prepared_by_engagement_auditor_id   String?
+  prepared_date DateTime?
+  r_nominated_reviewer   EngagementAuditor? @relation("nominated_reviewer", fields: [nominated_reviewer_id], references: [id])
+  nominated_reviewer_id   String?
+  r_authorised_by_engagement_auditor   EngagementAuditor? @relation("authorised_by_engagement_auditor", fields: [authorised_by_engagement_auditor_id], references: [id])
+  authorised_by_engagement_auditor_id   String?
+  authorised_date DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  reportDocumentReviewNotes_engagement_report_document   ReportDocumentReviewNote[] @relation("engagement_report_document")
+  @@map("engagement_report_document")
+}
+
+model ReportDocumentReviewNote {
+  id String   @id @default(ulid())
+  r_engagement_report_document   EngagementReportDocument? @relation("engagement_report_document", fields: [engagement_report_document_id], references: [id])
+  engagement_report_document_id   String?
+  r_review_note   ReviewNote? @relation("review_note", fields: [review_note_id], references: [id])
+  review_note_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("report_document_review_note")
+}
+
+model ReportDocumentTemplate {
+  id String   @id @default(ulid())
+  name String?
+  reference String?
+  required Boolean  @default(false)
+  files Json
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  engagementReportDocuments_report_document_template   EngagementReportDocument[] @relation("report_document_template")
+  @@map("report_document_template")
+}
+
+model ReviewNote {
+  id String   @id @default(ulid())
+  note String?
+  cleared_date DateTime?
+  r_cleared_by_engagement_auditor   EngagementAuditor? @relation("cleared_by_engagement_auditor", fields: [cleared_by_engagement_auditor_id], references: [id])
+  cleared_by_engagement_auditor_id   String?
+  verified_date DateTime?
+  r_verified_by_engagement_auditor   EngagementAuditor? @relation("verified_by_engagement_auditor", fields: [verified_by_engagement_auditor_id], references: [id])
+  verified_by_engagement_auditor_id   String?
+  r_verified_by_cae   User? @relation("verified_by_cae", fields: [verified_by_cae_id], references: [id])
+  verified_by_cae_id   String?
+  r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_reviewer_engagement_auditor   EngagementAuditor? @relation("reviewer_engagement_auditor", fields: [reviewer_engagement_auditor_id], references: [id])
+  reviewer_engagement_auditor_id   String?
+  r_reviewer_cae   User? @relation("reviewer_cae", fields: [reviewer_cae_id], references: [id])
+  reviewer_cae_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  auditProgramItemReviewNotes_review_note   AuditProgramItemReviewNote[] @relation("review_note")
+  fieldworkDocumentReviewNotes_review_note   FieldworkDocumentReviewNote[] @relation("review_note")
+  planningDocumentReviewNotes_review_note   PlanningDocumentReviewNote[] @relation("review_note")
+  reportDocumentReviewNotes_review_note   ReportDocumentReviewNote[] @relation("review_note")
+  @@map("review_note")
+}
+
+model ApiKey {
+  id String   @id @default(ulid())
+  name String?
+  key_hash String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  scopes Json
+  expires_at DateTime?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  last_used_at DateTime?
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("api_key")
+}
+
+model AuditLog {
+  id String   @id @default(ulid())
+  schema_name String?
+  table_name String?
+  record_id String?
+  operation_type String?
+  r_user   User? @relation("user", fields: [user_id], references: [id])
+  user_id   String?
+  timestamp DateTime?
+  original_values Json
+  new_values Json
+  query String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  @@map("audit_log")
+}
+
+model Organization {
+  id String   @id @default(ulid())
+  clerk_id String?
+  name String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  annualAuditPlanPeriods_organization   AnnualAuditPlanPeriod[] @relation("organization")
+  annualAuditPlans_organization   AnnualAuditPlan[] @relation("organization")
+  guidingDocuments_organization   GuidingDocument[] @relation("organization")
+  plannedEngagements_organization   PlannedEngagement[] @relation("organization")
+  auditProgramItemReviewNotes_organization   AuditProgramItemReviewNote[] @relation("organization")
+  engagementAuditProgramItems_organization   EngagementAuditProgramItem[] @relation("organization")
+  declarationSections_organization   DeclarationSection[] @relation("organization")
+  declarations_organization   Declaration[] @relation("organization")
+  engagementAuditorDeclarations_organization   EngagementAuditorDeclaration[] @relation("organization")
+  engagementAuditors_organization   EngagementAuditor[] @relation("organization")
+  engagementTypes_organization   EngagementType[] @relation("organization")
+  engagements_organization   Engagement[] @relation("organization")
+  engagementFieldworkDocuments_organization   EngagementFieldworkDocument[] @relation("organization")
+  fieldworkDocumentReviewNotes_organization   FieldworkDocumentReviewNote[] @relation("organization")
+  engagementFindingAndRecommendationss_organization   EngagementFindingAndRecommendations[] @relation("organization")
+  engagementPlanningDocuments_organization   EngagementPlanningDocument[] @relation("organization")
+  planningDocumentReviewNotes_organization   PlanningDocumentReviewNote[] @relation("organization")
+  planningDocumentTemplates_organization   PlanningDocumentTemplate[] @relation("organization")
+  engagementReportDocuments_organization   EngagementReportDocument[] @relation("organization")
+  reportDocumentReviewNotes_organization   ReportDocumentReviewNote[] @relation("organization")
+  reportDocumentTemplates_organization   ReportDocumentTemplate[] @relation("organization")
+  reviewNotes_organization   ReviewNote[] @relation("organization")
+  apiKeys_organization   ApiKey[] @relation("organization")
+  auditLogs_organization   AuditLog[] @relation("organization")
+  sentEmails_organization   SentEmail[] @relation("organization")
+  users_organization   User[] @relation("organization")
+  @@map("organization")
+}
+
+model SentEmail {
+  id String   @id @default(ulid())
+  resend_id String?
+  from_email String?
+  to_emails Json
+  bcc_emails Json
+  cc_emails Json
+  subject String?
+  body String?
+  scheduled_at DateTime?
+  attachments Json
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("sent_email")
+}
+
+model User {
+  id String   @id @default(ulid())
+  clerk_id String?
+  first_name String?
+  last_name String?
+  email String?
+  phone_number String?
+  role String? // org role (was Clerk org role in the original)
+  password_hash String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  annualAuditPlans_prepared_by   AnnualAuditPlan[] @relation("prepared_by")
+  annualAuditPlans_authorised_by   AnnualAuditPlan[] @relation("authorised_by")
+  plannedEngagements_assigned_senior_auditor   PlannedEngagement[] @relation("assigned_senior_auditor")
+  plannedEngagements_prepared_by   PlannedEngagement[] @relation("prepared_by")
+  plannedEngagements_authorised_by   PlannedEngagement[] @relation("authorised_by")
+  engagementAuditors_user   EngagementAuditor[] @relation("user")
+  engagements_prepared_by   Engagement[] @relation("prepared_by")
+  engagements_authorised_by   Engagement[] @relation("authorised_by")
+  reviewNotes_verified_by_cae   ReviewNote[] @relation("verified_by_cae")
+  reviewNotes_reviewer_cae   ReviewNote[] @relation("reviewer_cae")
+  auditLogs_user   AuditLog[] @relation("user")
+  riskAssessments_assessed_by   RiskAssessment[] @relation("risk_assessed_by")
+  correctiveActions_owner   CorrectiveAction[] @relation("corrective_action_owner")
+  tasks_assignee   Task[] @relation("task_assignee")
+  timeEntries_user   TimeEntry[] @relation("time_entries")
+  expenses_user   Expense[] @relation("expenses")
+  @@map("user")
+}
+
+
+model StoredFile {
+  id String   @id @default(ulid())
+  name String?
+  mime_type String?
+  size Int?
+  data Bytes?
+  entity_type String?
+  entity_id String?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("stored_file")
+}
+
+model RiskAssessment {
+  id String   @id @default(ulid())
+  auditable_entity String?
+  risk_description String?
+  risk_category String?
+  inherent_likelihood Int?
+  inherent_impact Int?
+  inherent_score Int?
+  existing_controls String?
+  residual_likelihood Int?
+  residual_impact Int?
+  residual_score Int?
+  r_linked_planned_engagement   PlannedEngagement? @relation("risk_linked_planned_engagement", fields: [linked_planned_engagement_id], references: [id])
+  linked_planned_engagement_id   String?
+  r_assessed_by   User? @relation("risk_assessed_by", fields: [assessed_by_id], references: [id])
+  assessed_by_id   String?
+  assessed_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("risk_assessment")
+}
+
+model CorrectiveAction {
+  id String   @id @default(ulid())
+  r_finding   EngagementFindingAndRecommendations? @relation("corrective_actions", fields: [finding_id], references: [id])
+  finding_id   String?
+  action_description String?
+  r_owner   User? @relation("corrective_action_owner", fields: [owner_user_id], references: [id])
+  owner_user_id   String?
+  due_date DateTime?
+  status String?
+  progress Int?
+  evidence String?
+  implemented_date DateTime?
+  verified_by_id String?
+  verified_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("corrective_action")
+}
+
+model Task {
+  id String   @id @default(ulid())
+  title String?
+  description String?
+  r_engagement   Engagement? @relation("tasks", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  stage String?
+  r_assignee   User? @relation("task_assignee", fields: [assignee_user_id], references: [id])
+  assignee_user_id   String?
+  due_date DateTime?
+  status String?
+  escalated Boolean  @default(false)
+  completed_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("task")
+}
+
+model TimeEntry {
+  id String   @id @default(ulid())
+  r_user   User? @relation("time_entries", fields: [user_id], references: [id])
+  user_id   String?
+  r_engagement   Engagement? @relation("time_entries", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  work_date DateTime?
+  hours Decimal?
+  description String?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("time_entry")
+}
+
+model Expense {
+  id String   @id @default(ulid())
+  r_engagement   Engagement? @relation("expenses", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_user   User? @relation("expenses", fields: [user_id], references: [id])
+  user_id   String?
+  description String?
+  amount Decimal?
+  expense_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("expense")
+}

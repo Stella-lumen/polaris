@@ -10,9 +10,16 @@ async function advanceAction(id: string, status: string) {
   "use server";
   const fd = new FormData();
   fd.set("status", status);
-  fd.set("progress", status === "IMPLEMENTED" ? "100" : status === "IN_PROGRESS" ? "50" : "0");
   await updateCorrectiveAction(id, fd);
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  OPEN: "Open", IN_PROGRESS: "In progress", IMPLEMENTED: "Implemented", VERIFIED: "Verified", NOT_EFFECTIVE: "Not effective",
+};
+const ESC_LABEL: Record<number, string> = {
+  0: "None", 1: "Reminder sent", 2: "Reminder sent to owner and supervisor",
+  3: "Escalated to supervisor", 4: "Escalated to Head of Department", 5: "Escalated to Chief Audit Officer",
+};
 
 const DAY = 86400_000;
 const SOURCES = [["INTERNAL_AUDIT", "Internal Audit"], ["AG", "Auditor General"], ["OTHER", "Other"]];
@@ -82,11 +89,11 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
       </div>
 
       <div className="flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-zinc-100 px-2 py-1">Total: {rows.length}</span>
-        <span className="rounded bg-blue-100 px-2 py-1 text-blue-800">Open: {open}</span>
-        <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">In progress: {inProg}</span>
-        <span className="rounded bg-purple-100 px-2 py-1 text-purple-800">Awaiting verification: {impl}</span>
-        <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">Verified: {verified}</span>
+        <a href="/follow-up" className={`rounded px-2 py-1 ${!sp.status && !sp.overdue && !sp.duesoon && !sp.source ? "bg-zinc-300 font-medium" : "bg-zinc-100"} hover:ring-1 hover:ring-zinc-400`}>Total: {rows.length}</a>
+        <a href="/follow-up?status=OPEN" className="rounded bg-blue-100 px-2 py-1 text-blue-800 hover:ring-1 hover:ring-blue-400">Open: {open}</a>
+        <a href="/follow-up?status=IN_PROGRESS" className="rounded bg-amber-100 px-2 py-1 text-amber-800 hover:ring-1 hover:ring-amber-400">In progress: {inProg}</a>
+        <a href="/follow-up?status=IMPLEMENTED" className="rounded bg-purple-100 px-2 py-1 text-purple-800 hover:ring-1 hover:ring-purple-400">Awaiting verification: {impl}</a>
+        <a href="/follow-up?status=VERIFIED" className="rounded bg-emerald-100 px-2 py-1 text-emerald-800 hover:ring-1 hover:ring-emerald-400">Verified: {verified}</a>
         <a href="/follow-up?overdue=true" className="rounded bg-red-100 px-2 py-1 text-red-800 hover:ring-1 hover:ring-red-400">Overdue: {overdueN}</a>
         <a href="/follow-up?duesoon=true" className="rounded bg-orange-100 px-2 py-1 text-orange-800 hover:ring-1 hover:ring-orange-400">Due ≤14d: {dueSoonN}</a>
         <span className="rounded bg-zinc-100 px-2 py-1">Closure rate: {closure}%</span>
@@ -95,6 +102,15 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
         )}
       </div>
 
+      {filtered.length === 0 && (
+        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {rows.length === 0 ? (
+            <>No corrective actions yet. Use <strong>Add Action</strong> to create the first one.</>
+          ) : (
+            <>No actions match your filters. <a href="/follow-up" className="text-orange-600 hover:underline">Clear filters</a> to see all {rows.length} actions.</>
+          )}
+        </div>
+      )}
       <DataGrid
         rows={filtered.map((a) => {
           const daysOverdue = a.due_date ? Math.floor((now - a.due_date.getTime()) / DAY) : null;
@@ -108,8 +124,9 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
             source_label: SOURCES.find(([v]) => v === (a.source ?? "INTERNAL_AUDIT"))?.[1] ?? a.source,
             owner_name: a.r_owner ? `${a.r_owner.first_name} ${a.r_owner.last_name}` : "—",
             due_display: a.due_date?.toISOString().slice(0, 10) ?? "—",
-            status_label: (a.status ?? "").replaceAll("_", " "),
-            flag: isOverdue ? `OVERDUE ${daysOverdue}d` : daysLeft != null && daysLeft <= 14 && a.status !== "VERIFIED" ? `due in ${daysLeft}d` : "",
+            status_label: STATUS_LABEL[a.status ?? "OPEN"] ?? a.status,
+            flag: isOverdue ? `Overdue by ${daysOverdue} day${daysOverdue === 1 ? "" : "s"}` : daysLeft != null && daysLeft <= 14 && a.status !== "VERIFIED" ? `Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : "",
+            escalation_label: ESC_LABEL[a.escalation_level ?? 0] ?? "None",
             ageing_bucket: ageing(daysOverdue),
             risk_rating: risk ? "Linked" : "—",
             risk_id: risk?.id ?? null,
@@ -136,7 +153,7 @@ export default async function FollowUpPage({ searchParams }: { searchParams: Pro
           { field: "status_label", headerName: "Status" },
           { field: "progress", headerName: "% Done", width: 90 },
           { field: "ageing_bucket", headerName: "Ageing", width: 90 },
-          { field: "escalation_level", headerName: "Esc. Lvl", width: 80 },
+          { field: "escalation_label", headerName: "Escalation", width: 210, tooltipField: "escalation_label" },
           { field: "revisions", headerName: "Revised", width: 80 },
           { field: "verified_date", headerName: "Verified" },
         ]}

@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         orgName={org?.name ?? "Stella Lumen"}
         orgLogoUrl={org?.logo_file_id ? `/api/files/${org.logo_file_id}` : "/stella-lumen.jpg"}
       />
-      <main className="w-full overflow-auto p-6">{children}</main>
+      <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
     </div>
   );
 }

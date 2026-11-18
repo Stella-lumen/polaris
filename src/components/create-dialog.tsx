@@ -27,6 +27,7 @@ export function CreateDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [vals, setVals] = useState<Record<string, string>>({});
 
   return (
     <>
@@ -89,7 +90,7 @@ export function CreateDialog({
                       {f.type === "textarea" ? (
                         <textarea name={f.name} required={f.required} placeholder={f.placeholder} className="rounded border border-neutral-300 px-3 py-2" />
                       ) : f.type === "select" ? (
-                        <select name={f.name} required={f.required} className="rounded border border-neutral-300 bg-white px-3 py-2">
+                        <select name={f.name} required={f.required} onChange={(e) => setVals((v) => ({ ...v, [f.name]: e.target.value }))} className="rounded border border-neutral-300 bg-white px-3 py-2">
                           <option value="">{f.placeholder ?? "Select…"}</option>
                           {f.options?.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -111,6 +112,20 @@ export function CreateDialog({
                   )}
                 </label>
               ))}
+              {(() => {
+                // Live L×I score hints for likelihood/impact field pairs
+                return fields
+                  .filter((f) => f.name.endsWith("_impact"))
+                  .map((f) => {
+                    const prefix = f.name.replace(/_impact$/, "");
+                    const l = Number(vals[`${prefix}_likelihood`]), i = Number(vals[f.name]);
+                    return l && i ? (
+                      <div key={f.name} className="rounded bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800">
+                        {prefix[0].toUpperCase() + prefix.slice(1)} score: {l} × {i} = {l * i}
+                      </div>
+                    ) : null;
+                  });
+              })()}
               <div className="mt-2 flex justify-end gap-2">
                 <button
                   type="button"

@@ -3,7 +3,8 @@ import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { DataGrid } from "@/components/data-grid";
 import { CreateDialog } from "@/components/create-dialog";
 import { RiskHeatmap } from "@/components/risk-heatmap";
-import { createRiskAssessment, addRiskToPlan, importRiskRegister } from "@/lib/actions";
+import { createRiskAssessment, addRiskToPlan, importRiskRegister, logRiskExport } from "@/lib/actions";
+import { RiskExport } from "@/components/risk-export";
 import { bandFor, bandBadgeClass, bandBadgeText, isHighRisk, DEFAULT_BANDS } from "@/lib/risk";
 import { RiskImport } from "@/components/risk-import";
 
@@ -63,6 +64,7 @@ export default async function RiskAssessmentPage({ searchParams }: { searchParam
         <h1 className="text-2xl font-semibold text-primary">Risk Assessment</h1>
         <div className="flex gap-2">
           <RiskImport action={importRiskRegister} />
+          <RiskExport rows={filtered.map((r) => ({ ...r, inherent_band: "", residual_band: "", coverage: r.linked_planned_engagement_id ? "Covered" : "Uncovered", risk_owner_name: r.r_risk_owner ? `${r.r_risk_owner.first_name} ${r.r_risk_owner.last_name}` : "", objective_name: r.r_strategic_objective?.name ?? "", planned_engagement_name: r.r_linked_planned_engagement?.name ?? "", review_display: r.next_review_date?.toISOString().slice(0, 10) ?? "" })) as unknown as Record<string, unknown>[]} logExport={logRiskExport} />
           <CreateDialog
             title="Add Risk Assessment"
             buttonLabel="Add Risk"

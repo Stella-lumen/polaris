@@ -823,6 +823,14 @@ export async function importRiskRegister(rows: Record<string, unknown>[]) {
   return { created, updated, skipped };
 }
 
+/** Audit-log a register export (called after the client-side xlsx download). */
+export async function logRiskExport(count: number) {
+  const uid = await actorId();
+  await prisma.auditLog.create({
+    data: { organization_id: DEMO_ORGANIZATION_ID, schema_name: "public", table_name: "Risk Assessments", record_id: "register-export", operation_type: "EXPORT", user_id: uid, timestamp: new Date(), original_values: {}, new_values: { rows: count, format: "xlsx" }, query: "risk-export" },
+  });
+}
+
 export async function createStrategicObjective(formData: FormData) {
   await requireRole(["org:admin"]);
   const o = await prisma.strategicObjective.create({

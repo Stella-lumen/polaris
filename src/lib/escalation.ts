@@ -18,7 +18,7 @@ export async function escalateOverdueWork() {
 
   const [tasks, actions, rules, admins, cae] = await Promise.all([
     prisma.task.findMany({
-      where: { ...scope, status: { not: "DONE" }, due_date: { not: null, lte: in7 } },
+      where: { ...scope, status: { not: "DONE" } },
       include: { r_assignee: true, r_engagement: true },
     }),
     prisma.correctiveAction.findMany({
@@ -40,18 +40,38 @@ export async function escalateOverdueWork() {
 
   const items: { dedup: string; to: string[]; cc: string[]; subject: string; body: string }[] = [];
   const levelBumps: { id: string; level: number }[] = [];
+  const taskBumps: { id: string; level: number }[] = [];
+  const supUsers = await prisma.user.findMany({ where: { deleted: false }, select: { id: true, email: true } });
+  const supervisors = new Map(supUsers.map((u) => [u.id, u.email ?? ""]));
 
-  // ---- tasks: unchanged daily reminder ----
+  // ---- tasks: rule-based levels (same dedup-once pattern as corrective actions) ----
   for (const t of tasks) {
-    const overdue = t.due_date! < now;
-    items.push({
-      dedup: `esc:task:${t.id}:${day}`,
-      to: [t.r_assignee?.email ?? adminEmails[0] ?? ""],
-      cc: adminEmails,
-      subject: `[ESCALATION] Task ${overdue ? "overdue" : "due soon"}: ${t.title}`,
-      body: `Task "${t.title}" (${t.r_engagement?.engagement_name ?? "unlinked"}) assigned to ${t.r_assignee?.first_name ?? ""} ${t.r_assignee?.last_name ?? ""} is ${overdue ? "overdue" : "due within 7 days"} — due ${t.due_date!.toISOString().slice(0, 10)}. Status: ${t.status}.`,
-    });
-    if (!t.escalated) await prisma.task.update({ where: { id: t.id }, data: { escalated: true } });
+    const daysToDue = t.due_date ? Math.floor((t.due_date.getTime() - now.getTime()) / DAY) : null;
+    const daysOverdue = t.due_date ? Math.floor((now.getTime() - t.due_date.getTime()) / DAY) : null;
+    const daysInReview = t.review_status === "READY_FOR_REVIEW" && t.updated_at ? Math.floor((now.getTime() - t.updated_at.getTime()) / DAY) : null;
+    const supEmail = t.supervisor_user_id ? (supervisors.get(t.supervisor_user_id) ?? null) : null;
+
+    const fire = (level: number, trig: string, d: number, to: string[], cc: string[], label: string) => {
+      items.push({
+        dedup: `esc:task:${trig}:${t.id}`,
+        to: to.length ? to : [adminEmails[0] ?? ""],
+        cc,
+        subject: `[ESCALATION L${level}] Task ${label}: ${t.title}`,
+        body: `Task "${t.title}" (${t.r_engagement?.engagement_name ?? "unlinked"}) assigned to ${t.r_assignee?.first_name ?? ""} ${t.r_assignee?.last_name ?? ""} is ${label} — due ${t.due_date?.toISOString().slice(0, 10) ?? "—"}. Status: ${t.status}.`,
+      });
+      if (level > (t.escalation_level ?? 0)) taskBumps.push({ id: t.id, level });
+    };
+
+    if (ruleFires("TASK_DAYS_OVERDUE", 7, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
+      fire(3, "overdue7", 7, [t.r_assignee?.email ?? ""], [...caeEmails, ...(supEmail ? [supEmail] : [])], `overdue by ${daysOverdue} days`);
+    else if (ruleFires("TASK_DUE_PASSED", 0, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
+      fire(2, "duepassed", 0, [t.r_assignee?.email ?? "", ...(supEmail ? [supEmail] : [])], adminEmails, `overdue by ${daysOverdue} days`);
+    else if (ruleFires("TASK_DAYS_BEFORE_DUE", 2, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
+      fire(1, "before2", 2, [t.r_assignee?.email ?? "", ...(supEmail ? [supEmail] : [])], [], `due in ${daysToDue} days`);
+    else if (ruleFires("TASK_DAYS_BEFORE_DUE", 7, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
+      fire(1, "before7", 7, [t.r_assignee?.email ?? ""], [], `due in ${daysToDue} days`);
+    if (ruleFires("REVIEW_PENDING_DAYS", 3, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
+      fire(1, "review3", 3, [supEmail ?? ""], [], `waiting for review for ${daysInReview} days`);
   }
 
   // ---- corrective actions: each rule fires once per action ----
@@ -117,6 +137,9 @@ export async function escalateOverdueWork() {
     );
     for (const b of levelBumps) {
       await prisma.correctiveAction.update({ where: { id: b.id }, data: { escalation_level: b.level } });
+    }
+    for (const b of taskBumps) {
+      await prisma.task.update({ where: { id: b.id }, data: { escalation_level: b.level, escalated: true } });
     }
     for (const i of fresh) {
       await prisma.auditLog.create({

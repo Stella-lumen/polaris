@@ -68,3 +68,28 @@ it("no escalation rule fires for VERIFIED actions", () => {
     expect(ruleFires(trigger, 0, { status: "VERIFIED", daysToDue: -30, daysOverdue: 30, daysUnverified: 30 })).toBe(false);
   }
 });
+
+describe("task escalation levels", () => {
+  const ctx = (o: object) => ({ daysToDue: null, daysOverdue: null, daysUnverified: null, status: "IN_PROGRESS", ...o });
+  it("each level fires exactly at the right window", () => {
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 6 }))).toBe(true);
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 8 }))).toBe(false);
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 0 }))).toBe(false);
+    expect(ruleFires("TASK_DUE_PASSED", 0, ctx({ daysOverdue: 1 }))).toBe(true);
+    expect(ruleFires("TASK_DUE_PASSED", 0, ctx({ daysOverdue: 0 }))).toBe(false);
+    expect(ruleFires("TASK_DAYS_OVERDUE", 7, ctx({ daysOverdue: 7 }))).toBe(true);
+    expect(ruleFires("TASK_DAYS_OVERDUE", 7, ctx({ daysOverdue: 6 }))).toBe(false);
+    expect(ruleFires("REVIEW_PENDING_DAYS", 3, ctx({ daysInReview: 3 }))).toBe(true);
+    expect(ruleFires("REVIEW_PENDING_DAYS", 3, ctx({ daysInReview: 2 }))).toBe(false);
+  });
+  it("Done tasks never escalate", () => {
+    for (const t of ["TASK_DAYS_BEFORE_DUE", "TASK_DUE_PASSED", "TASK_DAYS_OVERDUE", "REVIEW_PENDING_DAYS"]) {
+      expect(ruleFires(t, 0, ctx({ status: "DONE", daysOverdue: 99, daysToDue: -99, daysInReview: 99 }))).toBe(false);
+    }
+  });
+  it("overdue vs nearing-due are separate triggers", () => {
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 3, daysOverdue: null }))).toBe(true);
+    expect(ruleFires("TASK_DAYS_OVERDUE", 7, ctx({ daysToDue: 3 }))).toBe(false);
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysOverdue: 10 }))).toBe(false);
+  });
+});

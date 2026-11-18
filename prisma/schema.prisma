@@ -919,8 +919,18 @@ model Task {
   stage String?
   r_assignee   User? @relation("task_assignee", fields: [assignee_user_id], references: [id])
   assignee_user_id   String?
+  start_date DateTime?
   due_date DateTime?
   status String?
+  priority String?
+  planned_hours Decimal?
+  supervisor_user_id String?
+  review_status String?
+  reviewed_by String?
+  reviewed_date DateTime?
+  review_comment String?
+  risk_id String?
+  escalation_level Int @default(0)
   escalated Boolean  @default(false)
   completed_date DateTime?
   organization_id   String?
@@ -1072,4 +1082,38 @@ model ResourceSetting {
   setting_value String?
   organization_id   String?
   @@map("resource_setting")
+}
+
+// ---------- task scheduling ----------
+
+model TaskDependency {
+  id String   @id @default(ulid())
+  task_id String?
+  depends_on_task_id String?
+  created_at DateTime?
+  @@map("task_dependency")
+}
+
+model TaskTemplate {
+  id String   @id @default(ulid())
+  engagement_type_id String?
+  stage String?
+  title String?
+  days_offset Int?   // days after engagement start
+  default_role String?
+  planned_hours Decimal?
+  sort Int?
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_at DateTime?
+  @@map("task_template")
+}
+
+model TaskStage {
+  id String   @id @default(ulid())
+  name String?
+  sort Int?
+  organization_id   String?
+  deleted Boolean  @default(false)
+  @@map("task_stage")
 }

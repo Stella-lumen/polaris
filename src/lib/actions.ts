@@ -1062,7 +1062,12 @@ export async function createTask(formData: FormData) {
       engagement_id: str(formData.get("engagement_id")),
       stage: str(formData.get("stage")),
       assignee_user_id: str(formData.get("assignee_user_id")),
+      supervisor_user_id: str(formData.get("supervisor_user_id")),
+      start_date: date(formData.get("start_date")),
       due_date: date(formData.get("due_date")),
+      priority: str(formData.get("priority")),
+      planned_hours: Number(formData.get("planned_hours")) || null,
+      risk_id: str(formData.get("risk_id")),
       status: "OPEN",
     },
   });
@@ -1072,13 +1077,115 @@ export async function createTask(formData: FormData) {
 
 export async function updateTaskStatus(id: string, status: string) {
   const uid = await actorId();
-  const t = await prisma.task.update({
+  const t = await prisma.task.findUnique({ where: { id } });
+  if (!t) throw new Error("Task not found");
+  if (status === "DONE") throw new Error("Tasks are only Done when a supervisor approves them — use Ready for review");
+  if (status === "IN_PROGRESS") {
+    const pending = await prisma.taskDependency.findMany({ where: { task_id: id } });
+    if (pending.length) {
+      const preds = await prisma.task.findMany({ where: { id: { in: pending.map((p) => p.depends_on_task_id ?? "") } }, select: { status: true, title: true } });
+      const open = preds.filter((p) => p.status !== "DONE");
+      if (open.length) console.warn(`Started before predecessor done: ${open.map((p) => p.title).join(", ")}`);
+    }
+  }
+  const updated = await prisma.task.update({
     where: { id },
-    data: { status, completed_date: status === "DONE" ? new Date() : null, updated_by: uid },
+    data: { status, updated_by: uid, updated_at: new Date() },
   });
-  await logAudit("Tasks", id, "UPDATE", { status });
+  await logAudit("Tasks", id, "UPDATE", { status: { old: t.status, new: status } });
   revalidatePath("/tasks");
-  return t;
+  return updated;
+}
+
+/** Assignee submits the task for supervisor review. */
+export async function submitTaskForReview(id: string) {
+  const user = await requireUser();
+  const t = await prisma.task.findUnique({ where: { id } });
+  if (!t) throw new Error("Task not found");
+  if (t.assignee_user_id !== user.id && !canAuthorise(user)) throw new Error("Only the assignee can submit this task for review");
+  await prisma.task.update({ where: { id }, data: { status: "IN_PROGRESS", review_status: "READY_FOR_REVIEW", updated_by: user.id, updated_at: new Date() } });
+  await logAudit("Tasks", id, "SUBMIT_REVIEW", { by: user.id });
+  revalidatePath("/tasks");
+}
+
+/** Supervisor approves (Done) or sends back with a comment. */
+export async function reviewTask(id: string, approve: boolean, comment?: string) {
+  const user = await requireUser();
+  const t = await prisma.task.findUnique({ where: { id } });
+  if (!t) throw new Error("Task not found");
+  if (t.assignee_user_id === user.id) throw new Error("You cannot approve your own task");
+  if (!canAuthorise(user) && t.supervisor_user_id !== user.id) throw new Error("Only the task supervisor can review it");
+  if (t.review_status !== "READY_FOR_REVIEW") throw new Error("This task is not waiting for review");
+  await prisma.task.update({
+    where: { id },
+    data: {
+      status: approve ? "DONE" : "IN_PROGRESS",
+      review_status: approve ? "APPROVED" : "RETURNED",
+      reviewed_by: user.id,
+      reviewed_date: new Date(),
+      review_comment: comment ?? null,
+      completed_date: approve ? new Date() : null,
+      updated_by: user.id,
+    },
+  });
+  await logAudit("Tasks", id, approve ? "APPROVE" : "RETURN", { by: user.id, comment });
+  revalidatePath("/tasks");
+}
+
+export async function approveTaskForm(id: string) { await reviewTask(id, true); }
+export async function sendBackTaskForm(id: string, formData: FormData) { await reviewTask(id, false, str(formData.get("comment")) ?? undefined); }
+
+/** Add a dependency — blocks cycles. */
+export async function addTaskDependency(taskId: string, dependsOn: string) {
+  const user = await requireUser();
+  if (taskId === dependsOn) throw new Error("A task cannot depend on itself");
+  // Cycle check: walk depends_on chain from dependsOn; if we reach taskId, it's a cycle.
+  const seen = new Set<string>();
+  let frontier = [dependsOn];
+  while (frontier.length) {
+    const next = frontier.pop()!;
+    if (next === taskId) throw new Error("This would create a circular dependency");
+    if (seen.has(next)) continue;
+    seen.add(next);
+    const deps = await prisma.taskDependency.findMany({ where: { task_id: next } });
+    frontier.push(...deps.map((d) => d.depends_on_task_id ?? "").filter(Boolean));
+  }
+  const dep = await prisma.taskDependency.create({ data: { task_id: taskId, depends_on_task_id: dependsOn } });
+  await logAudit("Tasks", taskId, "DEPENDENCY", { depends_on: dependsOn });
+  revalidatePath("/tasks");
+  return dep;
+}
+
+/** Generate standard tasks from templates for an engagement. */
+export async function generateStandardTasks(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can generate standard tasks");
+  const eng = await prisma.engagement.findUnique({ where: { id: engagementId }, include: { teamMembers_engagement: { where: { deleted: false } } } });
+  if (!eng) throw new Error("Engagement not found");
+  const templates = await prisma.taskTemplate.findMany({ where: { deleted: false, OR: [{ engagement_type_id: eng.engagement_type_id }, { engagement_type_id: null }] }, orderBy: { sort: "asc" } });
+  if (!templates.length) throw new Error("No task templates defined — ask Admin to add them");
+  const base = eng.start_date ?? eng.created_at ?? new Date();
+  const roleMap: Record<string, string | null> = {};
+  for (const m of eng.teamMembers_engagement) if (m.role && !roleMap[m.role]) roleMap[m.role] = m.user_id;
+  const lead = eng.teamMembers_engagement.find((m) => m.role === "LEAD")?.user_id ?? eng.teamMembers_engagement[0]?.user_id ?? null;
+  let created = 0;
+  for (const tp of templates) {
+    if (await prisma.task.findFirst({ where: { engagement_id: engagementId, title: tp.title, deleted: false } })) continue;
+    const due = new Date(base); due.setDate(due.getDate() + (tp.days_offset ?? 0));
+    await prisma.task.create({
+      data: {
+        organization_id: eng.organization_id, created_by: user.id,
+        title: tp.title, stage: tp.stage, engagement_id: engagementId,
+        assignee_user_id: roleMap[tp.default_role ?? ""] ?? lead,
+        supervisor_user_id: lead,
+        due_date: due, planned_hours: tp.planned_hours, status: "OPEN",
+      },
+    });
+    created++;
+  }
+  await logAudit("Tasks", engagementId, "GENERATE", { created });
+  revalidatePath("/tasks");
+  revalidatePath(`/engagements/${engagementId}/dashboard`);
 }
 
 // Finding lifecycle: OPEN → MANAGEMENT_RESPONSE → UNDER_REVIEW → CLEARED → CLOSED

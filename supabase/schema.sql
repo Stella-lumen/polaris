@@ -1321,3 +1321,18 @@ create index if not exists "task_org_status_due_idx" on "task" ("organization_id
 create index if not exists "corrective_action_org_status_due_idx" on "corrective_action" ("organization_id", "status", "due_date");
 create index if not exists "engagement_org_updated_idx" on "engagement" ("organization_id", "updated_at" desc);
 create index if not exists "finding_org_updated_idx" on "engagement_finding_and_recommendations" ("organization_id", "updated_at" desc);
+
+-- task scheduling additions
+alter table task add column if not exists start_date timestamptz;
+alter table task add column if not exists priority text;
+alter table task add column if not exists planned_hours numeric;
+alter table task add column if not exists supervisor_user_id text;
+alter table task add column if not exists review_status text;
+alter table task add column if not exists reviewed_by text;
+alter table task add column if not exists reviewed_date timestamptz;
+alter table task add column if not exists review_comment text;
+alter table task add column if not exists risk_id text;
+alter table task add column if not exists escalation_level int default 0;
+create table if not exists task_dependency (id text primary key, task_id text, depends_on_task_id text, created_at timestamptz);
+create table if not exists task_template (id text primary key, engagement_type_id text, stage text, title text, days_offset int, default_role text, planned_hours numeric, sort int, organization_id text, deleted boolean default false, created_at timestamptz);
+create table if not exists task_stage (id text primary key, name text, sort int, organization_id text, deleted boolean default false);

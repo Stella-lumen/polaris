@@ -140,6 +140,7 @@ model EngagementAuditProgramItem {
   risk String?
   audit_objective String?
   audit_procedure String?
+  wp_ref String?
   r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
   engagement_id   String?
   r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
@@ -397,6 +398,7 @@ model EngagementFindingAndRecommendations {
   root_cause String?
   recommendations String?
   management_comment String?
+  status String? @default("OPEN")
   r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
   prepared_by_engagement_auditor_id   String?
   prepared_date DateTime?

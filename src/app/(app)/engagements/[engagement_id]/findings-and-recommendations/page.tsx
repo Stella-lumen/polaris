@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { DataGrid } from "@/components/data-grid";
+import { updateFindingStatus } from "@/lib/actions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
@@ -13,20 +14,13 @@ export default async function FindingsPage({
   const { engagement_id } = await params;
   const engagement = await prisma.engagement.findFirst({ where: { id: engagement_id, deleted: false } });
   if (!engagement) notFound();
-  const [rows, team] = await Promise.all([
-    prisma.engagementFindingAndRecommendations.findMany({
-      where: { engagement_id, deleted: false },
-      include: {
-        r_engagement_fieldwork_document: true,
-        r_prepared_by_engagement_auditor: { include: { r_user: true } },
-      },
-    }),
-    prisma.engagementAuditor.findMany({ where: { engagement_id, deleted: false }, include: { r_user: true } }),
-  ]);
-  const auditors = team.map((a) => ({
-    id: a.id,
-    label: a.r_user ? `${a.r_user.first_name} ${a.r_user.last_name} — ${a.position_on_audit}` : a.id,
-  }));
+  const rows = await prisma.engagementFindingAndRecommendations.findMany({
+    where: { engagement_id, deleted: false },
+    include: {
+      r_engagement_fieldwork_document: true,
+      r_prepared_by_engagement_auditor: { include: { r_user: true } },
+    },
+  });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -43,14 +37,17 @@ export default async function FindingsPage({
           prepared_by_name: f.r_prepared_by_engagement_auditor?.r_user
             ? `${f.r_prepared_by_engagement_auditor.r_user.first_name} ${f.r_prepared_by_engagement_auditor.r_user.last_name}`
             : "",
+          status: f.status ?? "OPEN",
+          status_label: (f.status ?? "OPEN").replaceAll("_", " "),
         })) as unknown as object[]}
-        rowActions={["signoff"]}
-        signoff={{ stage: "finding", engagementId: engagement_id, auditors }}
+        rowActions={["workflow"]}
+        workflow={{ steps: ["OPEN", "MANAGEMENT_RESPONSE", "UNDER_REVIEW", "CLEARED", "CLOSED"], onAdvance: updateFindingStatus }}
         colDefs={[
           { field: "detailed_finding", headerName: "Detailed Finding", flex: 2 },
           { field: "root_cause", headerName: "Root Cause" },
           { field: "recommendations", headerName: "Recommendations", flex: 1.5 },
           { field: "management_comment", headerName: "Management Comment" },
+          { field: "status_label", headerName: "Status" },
           { field: "fieldwork_ref", headerName: "Fieldwork Doc Ref" },
           { field: "prepared_by_name", headerName: "Prepared By" },
           { field: "prepared_date", headerName: "Prepared Date" },

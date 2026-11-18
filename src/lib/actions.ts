@@ -451,6 +451,7 @@ export async function createAuditProgramItem(engagementId: string, formData: For
       risk: str(formData.get("risk")),
       audit_objective: str(formData.get("audit_objective")),
       audit_procedure: str(formData.get("audit_procedure")),
+      wp_ref: str(formData.get("wp_ref")),
     },
   });
   await logAudit("Engagement Audit Program Items", i.id, "INSERT", i);
@@ -761,6 +762,34 @@ export async function updateTaskStatus(id: string, status: string) {
   await logAudit("Tasks", id, "UPDATE", { status });
   revalidatePath("/tasks");
   return t;
+}
+
+// Finding lifecycle: OPEN → MANAGEMENT_RESPONSE → UNDER_REVIEW → CLEARED → CLOSED
+const FINDING_STEPS = ["OPEN", "MANAGEMENT_RESPONSE", "UNDER_REVIEW", "CLEARED", "CLOSED"];
+
+export async function updateFindingStatus(id: string, status: string) {
+  const user = await requireUser();
+  if (!FINDING_STEPS.includes(status)) throw new Error("Invalid status");
+  const f = await prisma.engagementFindingAndRecommendations.findUnique({ where: { id } });
+  if (!f) throw new Error("Finding not found");
+  if ((status === "CLEARED" || status === "CLOSED") && !canAuthorise(user)) {
+    throw new Error("Only Admin or CAE can clear or close findings");
+  }
+  // CLEARED stamps the authorise chain — resolve the session user's auditor record on this engagement
+  let authorise: Record<string, unknown> = {};
+  if (status === "CLEARED" && f.authorised_date == null && f.engagement_id) {
+    const auditor = await prisma.engagementAuditor.findFirst({
+      where: { engagement_id: f.engagement_id, user_id: user.id, deleted: false },
+    });
+    authorise = { authorised_date: new Date(), authorised_by_engagement_auditor_id: auditor?.id ?? null };
+  }
+  const updated = await prisma.engagementFindingAndRecommendations.update({
+    where: { id },
+    data: { status, ...authorise, updated_by: user.id },
+  });
+  await logAudit("Engagement Finding And Recommendations", id, "UPDATE", { status });
+  revalidatePath(`/engagements/${f.engagement_id}/findings-and-recommendations`);
+  return updated;
 }
 
 // ---------- resource allocation ----------

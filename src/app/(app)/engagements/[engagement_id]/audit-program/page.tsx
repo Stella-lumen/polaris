@@ -38,6 +38,7 @@ export default async function AuditProgramPage({
             { name: "risk", label: "Risk", type: "textarea", required: true },
             { name: "audit_objective", label: "Audit Objective", type: "textarea" },
             { name: "audit_procedure", label: "Audit Procedure", type: "textarea" },
+            { name: "wp_ref", label: "Working Paper Ref (e.g. B1)" },
           ]}
         />
       </div>
@@ -50,6 +51,7 @@ export default async function AuditProgramPage({
           { field: "risk", headerName: "Risk", flex: 2 },
           { field: "audit_objective", headerName: "Audit Objective", flex: 2 },
           { field: "audit_procedure", headerName: "Audit Procedure", flex: 2 },
+          { field: "wp_ref", headerName: "WP Ref" },
           { field: "prepared_date", headerName: "Prepared Date" },
           { field: "authorised_date", headerName: "Authorised Date" },
         ]}

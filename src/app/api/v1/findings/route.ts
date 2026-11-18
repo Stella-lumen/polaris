@@ -39,7 +39,7 @@ export async function GET(req: Request) {
       root_cause: r.root_cause,
       recommendations: r.recommendations,
       management_comment: r.management_comment,
-      status: r.authorised_date ? "closed" : "open",
+      status: (r.status ?? (r.authorised_date ? "CLOSED" : "OPEN")).toLowerCase(),
       engagement_id: r.engagement_id,
       engagement_name: r.r_engagement?.engagement_name ?? null,
       fieldwork_document_reference: r.r_engagement_fieldwork_document?.document_reference ?? null,

@@ -777,6 +777,13 @@ model Organization {
 model SentEmail {
   id String   @id @default(ulid())
   resend_id String?
+  delivery_status String?
+  delivery_error  String?
+  retry_count    Int @default(0)
+  entity_type    String?
+  entity_id      String?
+  reason_label   String?
+  level          Int?
   from_email String?
   to_emails Json
   bcc_emails Json
@@ -905,6 +912,7 @@ model RiskAssessment {
 model EscalationRule {
   id String   @id @default(ulid())
   trigger String?
+  entity_kind String?
   days Int?
   notify_owner Boolean @default(false)
   notify_supervisor Boolean @default(false)
@@ -1238,4 +1246,19 @@ model PlanVersion {
   revision_reason String?
   created_at DateTime?
   @@map("plan_version")
+}
+
+model EmailSetting {
+  id String   @id @default(ulid())
+  mode String @default("DEMO")
+  sender_name String?
+  sender_email String?
+  restrict_to_approved Boolean @default(true)
+  redirect_all_to String?
+  approved_addresses Json?
+  last_run_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  organization_id String?
+  @@map("email_setting")
 }

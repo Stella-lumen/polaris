@@ -1902,3 +1902,94 @@ export async function addRiskToPlanDetail(planId: string, riskId: string, formDa
   await logAudit("Audit plans", planId, "UPDATE", { added_planned_engagement: pe.name, from_risk: risk.auditable_entity, by: user.id });
   revalidatePath(`/annual-audit-plan/${planId}`);
 }
+
+// ---- email delivery + escalation rules ----
+
+export async function updateEmailSettings(formData: FormData) {
+  const user = await requireUser();
+  const { canAuthorise } = await import("@/lib/auth");
+  if (!canAuthorise(user)) throw new Error("Only an administrator can change email settings.");
+  const { prisma } = await import("@/lib/db");
+  const mode = str(formData.get("mode")) === "LIVE" ? "LIVE" : "DEMO";
+  const approved = String(formData.get("approved_addresses") ?? "").split(/[\n,;]+/).map((a) => a.trim()).filter(Boolean);
+  await prisma.emailSetting.updateMany({
+    where: { organization_id: DEMO_ORGANIZATION_ID },
+    data: {
+      mode,
+      sender_name: str(formData.get("sender_name")),
+      sender_email: str(formData.get("sender_email")),
+      restrict_to_approved: formData.get("restrict_to_approved") === "on",
+      redirect_all_to: str(formData.get("redirect_all_to")),
+      approved_addresses: approved,
+      updated_by: user.id, updated_at: new Date(),
+    },
+  });
+  await logAudit("Email settings", "delivery", "UPDATE", { message: `Email delivery settings changed — mode set to ${mode === "LIVE" ? "Live" : "Demo"}` });
+  revalidatePath("/admin/sent-emails");
+}
+
+export async function sendTestEmail(formData: FormData) {
+  const user = await requireUser();
+  const { canAuthorise } = await import("@/lib/auth");
+  if (!canAuthorise(user)) throw new Error("Only an administrator can send test emails.");
+  const { prisma } = await import("@/lib/db");
+  const { deliverEmail } = await import("@/lib/mailer");
+  const to = str(formData.get("to")) ?? user.email ?? "";
+  const row = await prisma.sentEmail.create({
+    data: {
+      to_emails: [to], cc_emails: [], bcc_emails: [], attachments: [],
+      subject: "Test email from Polaris",
+      body: "This is a test email to confirm the delivery settings are working.",
+      reason_label: "Test email", entity_type: "test",
+      organization_id: DEMO_ORGANIZATION_ID, created_at: new Date(),
+    },
+  });
+  const result = await deliverEmail(row.id);
+  await logAudit("Email settings", "test", "NOTIFICATION", { message: `Test email sent to ${to} — ${result.message}` });
+  revalidatePath("/admin/sent-emails");
+}
+
+export async function retryEmail(id: string) {
+  const user = await requireUser();
+  const { prisma } = await import("@/lib/db");
+  const { deliverEmail } = await import("@/lib/mailer");
+  const e = await prisma.sentEmail.findUnique({ where: { id } });
+  if (!e) throw new Error("Email not found");
+  if ((e.retry_count ?? 0) >= 3) throw new Error("This email has already been retried 3 times.");
+  await prisma.sentEmail.update({ where: { id }, data: { retry_count: { increment: 1 }, delivery_status: "QUEUED", delivery_error: null } });
+  const result = await deliverEmail(id);
+  await logAudit("Sent emails", id, "NOTIFICATION", { message: `Retried an email — ${result.message}` });
+  revalidatePath("/admin/sent-emails");
+}
+
+export async function updateEscalationRule(id: string, formData: FormData) {
+  const user = await requireUser();
+  const { canAuthorise } = await import("@/lib/auth");
+  if (!canAuthorise(user)) throw new Error("Only an administrator can change escalation rules.");
+  const { prisma } = await import("@/lib/db");
+  const rule = await prisma.escalationRule.findUnique({ where: { id } });
+  if (!rule) throw new Error("Rule not found");
+  const days = Number(formData.get("days") ?? rule.days ?? 0);
+  await prisma.escalationRule.update({
+    where: { id },
+    data: {
+      days,
+      notify_owner: formData.get("notify_owner") === "on",
+      notify_supervisor: formData.get("notify_supervisor") === "on",
+      notify_cae: formData.get("notify_cae") === "on",
+      notify_hod: formData.get("notify_hod") === "on",
+    },
+  });
+  await logAudit("Escalation rules", id, "UPDATE", { message: `Escalation timing changed — "${rule.trigger}" now fires at ${days} day${days === 1 ? "" : "s"}` });
+  revalidatePath("/admin/escalation-rules");
+}
+
+export async function runEscalationNow() {
+  const user = await requireUser();
+  const { canAuthorise } = await import("@/lib/auth");
+  if (!canAuthorise(user)) throw new Error("Only an administrator can run escalations manually.");
+  const { escalateOverdueWork } = await import("@/lib/escalation");
+  const r = await escalateOverdueWork();
+  await logAudit("Escalation rules", "engine", "NOTIFICATION", { message: `Escalation engine run manually — ${r.sent} notification${r.sent === 1 ? "" : "s"} queued` });
+  revalidatePath("/admin/sent-emails");
+}

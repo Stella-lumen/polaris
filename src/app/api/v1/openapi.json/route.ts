@@ -170,6 +170,36 @@ const spec = {
       },
     },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
+    "/notifications": {
+      get: {
+        tags: ["Notifications"],
+        summary: "List notification outbox entries (reminders, escalations, test emails)",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "type", in: "query", schema: { type: "string", enum: ["task", "corrective_action", "test"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["queued", "delivered", "failed", "demo"] } },
+        ],
+        responses: {
+          "200": { description: "Notifications with reason, recipients, delivery status and related item. Scope: notifications:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks notifications:read" },
+        },
+      },
+    },
+    "/escalation-rules": {
+      get: {
+        tags: ["Notifications"],
+        summary: "List escalation rules (timings and who is notified)",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Escalation rules for tasks and corrective actions. Scope: notifications:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks notifications:read" },
+        },
+      },
+    },
     "/resource-allocations": listGet("Resources", "List time entries / resource allocations", "resources:read"),
     "/reports/summary": {
       get: {

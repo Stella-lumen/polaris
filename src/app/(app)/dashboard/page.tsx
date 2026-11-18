@@ -208,9 +208,9 @@ export default async function DashboardPage() {
         </div>
         <div className="mb-3 text-xs text-muted-foreground">
           Automated alerts for overdue tasks and corrective actions nearing their deadline
-          {escalation.total > 0 && (
+          {escalation.evaluated > 0 && (
             <span className="ml-1 text-orange-600">
-              — {escalation.queued > 0 ? `${escalation.queued} new notification${escalation.queued === 1 ? "" : "s"} queued to supervisors today` : "supervisors already notified today"}
+              — {escalation.sent > 0 ? `${escalation.sent} new notification${escalation.sent === 1 ? "" : "s"} queued` : "notifications already sent for this level"}
             </span>
           )}
         </div>

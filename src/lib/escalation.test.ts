@@ -93,3 +93,26 @@ describe("task escalation levels", () => {
     expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysOverdue: 10 }))).toBe(false);
   });
 });
+
+describe("closed and finished items never escalate", () => {
+  it("a closed corrective action never fires any rule", () => {
+    expect(ruleFires("DAYS_BEFORE_DUE", 14, ctx({ daysToDue: 5, status: "CLOSED" }))).toBe(false);
+    expect(ruleFires("DAYS_OVERDUE", 7, ctx({ daysOverdue: 40, status: "CLOSED" }))).toBe(false);
+    expect(ruleFires("UNVERIFIED_DAYS", 14, ctx({ daysUnverified: 30, status: "CLOSED" }))).toBe(false);
+    expect(ruleFires("ON_DUE_NOT_DONE", 0, ctx({ daysToDue: -10, status: "CLOSED" }))).toBe(false);
+  });
+
+  it("a done or closed task never fires any rule", () => {
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 2, status: "DONE" }))).toBe(false);
+    expect(ruleFires("TASK_DAYS_OVERDUE", 7, ctx({ daysOverdue: 30, status: "DONE" }))).toBe(false);
+    expect(ruleFires("TASK_DUE_PASSED", 0, ctx({ daysOverdue: 5, status: "CLOSED" }))).toBe(false);
+  });
+
+  it("task reminders fire in their windows", () => {
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 5, status: "IN_PROGRESS" }))).toBe(true);
+    expect(ruleFires("TASK_DAYS_BEFORE_DUE", 7, ctx({ daysToDue: 8, status: "IN_PROGRESS" }))).toBe(false);
+    expect(ruleFires("TASK_DUE_PASSED", 0, ctx({ daysOverdue: 1, status: "IN_PROGRESS" }))).toBe(true);
+    expect(ruleFires("TASK_DUE_PASSED", 0, ctx({ daysOverdue: 0, status: "IN_PROGRESS" }))).toBe(false);
+    expect(ruleFires("TASK_DAYS_OVERDUE", 7, ctx({ daysOverdue: 7, status: "IN_PROGRESS" }))).toBe(true);
+  });
+});

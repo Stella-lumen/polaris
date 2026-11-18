@@ -12,6 +12,9 @@ const SCOPES: [string, string][] = [
   ["tasks:read", "Scheduled tasks and assignments"],
   ["resources:read", "Time entries / resource allocations"],
   ["reports:read", "Aggregated report summaries"],
+  ["documents:read", "Guiding documents and versions"],
+  ["templates:read", "Document templates and field definitions"],
+  ["notifications:read", "Notification outbox and escalation rules"],
   ["users:sync", "Directory provisioning (POST only)"],
 ];
 
@@ -26,6 +29,10 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/tasks", "Tasks and due dates"],
   ["GET", "/resource-allocations", "Time and expense usage"],
   ["GET", "/reports/summary", "Portfolio aggregates"],
+  ["GET", "/documents", "Guiding documents"],
+  ["GET", "/templates", "Document templates"],
+  ["GET", "/notifications", "Notification outbox"],
+  ["GET", "/escalation-rules", "Escalation timings"],
   ["POST", "/users/sync", "Directory user provisioning"],
 ];
 

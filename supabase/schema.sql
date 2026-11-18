@@ -1,6 +1,6 @@
 -- =====================================================================
 -- POLARIS INTERNAL AUDIT — COMPLETE Supabase / PostgreSQL schema
--- Generated from the FULL app schema (prisma/schema.prisma — 33 tables)
+-- Generated from the FULL app schema (prisma/schema.prisma — 50 tables)
 --
 -- Run in: Supabase Dashboard → SQL Editor → New query → paste → Run
 --
@@ -15,8 +15,6 @@
 -- =====================================================================
 
 create extension if not exists pgcrypto;
-
--- CreateSchema
 
 -- CreateTable
 CREATE TABLE "annual_audit_plan_period" (
@@ -48,6 +46,11 @@ CREATE TABLE "annual_audit_plan" (
     "prepared_date" TIMESTAMPTZ,
     "authorised_by_id" TEXT,
     "authorised_date" TIMESTAMPTZ,
+    "status" TEXT DEFAULT 'DRAFT',
+    "committee_signed_by" TEXT,
+    "committee_signed_date" TIMESTAMPTZ,
+    "revision_reason" TEXT,
+    "version_no" INTEGER NOT NULL DEFAULT 1,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -66,6 +69,17 @@ CREATE TABLE "guiding_document" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "name" TEXT,
     "description" TEXT,
+    "category" TEXT,
+    "version" TEXT,
+    "version_no" INTEGER NOT NULL DEFAULT 1,
+    "effective_date" TIMESTAMPTZ,
+    "review_date" TIMESTAMPTZ,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "view_roles" JSONB,
+    "edit_roles" JSONB,
+    "engagement_ids" JSONB,
+    "text_extract" TEXT,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -96,6 +110,11 @@ CREATE TABLE "planned_engagement" (
     "actual_start_date" TIMESTAMPTZ,
     "actual_end_date" TIMESTAMPTZ,
     "actual_budget" DECIMAL(65,30),
+    "planned_hours" DECIMAL(65,30),
+    "quarter" TEXT,
+    "status" TEXT DEFAULT 'PLANNED',
+    "lead_user_id" TEXT,
+    "risk_id" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" TIMESTAMPTZ,
     "authorised_by_id" TEXT,
@@ -271,6 +290,14 @@ CREATE TABLE "engagement" (
     "end_date" TIMESTAMPTZ,
     "engagement_budget" DECIMAL(65,30),
     "engagement_spend" DECIMAL(65,30),
+    "objectives" TEXT,
+    "scope_text" TEXT,
+    "planning_approved_by" TEXT,
+    "planning_approved_date" TIMESTAMPTZ,
+    "report_template_id" TEXT,
+    "report_approved_by" TEXT,
+    "report_approved_date" TIMESTAMPTZ,
+    "report_status" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" TIMESTAMPTZ,
     "authorised_by_id" TEXT,
@@ -285,6 +312,8 @@ CREATE TABLE "engagement" (
     "updated_at" TIMESTAMPTZ,
     "deleted_by" TEXT,
     "deleted_at" TIMESTAMPTZ,
+    "planned_hours" DECIMAL(65,30),
+    "planned_expense_budget" DECIMAL(65,30),
 
     CONSTRAINT "engagement_pkey" PRIMARY KEY ("id")
 );
@@ -344,6 +373,7 @@ CREATE TABLE "engagement_finding_and_recommendations" (
     "recommendations" TEXT,
     "management_comment" TEXT,
     "status" TEXT DEFAULT 'OPEN',
+    "source_risk_id" TEXT,
     "prepared_by_engagement_auditor_id" TEXT,
     "prepared_date" TIMESTAMPTZ,
     "authorised_by_engagement_auditor_id" TEXT,
@@ -359,6 +389,40 @@ CREATE TABLE "engagement_finding_and_recommendations" (
     "deleted_at" TIMESTAMPTZ,
 
     CONSTRAINT "engagement_finding_and_recommendations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "strategic_objective" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "name" TEXT,
+    "description" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "strategic_objective_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "risk_rating_band" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "label" TEXT,
+    "min_score" INTEGER,
+    "max_score" INTEGER,
+    "color" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "risk_rating_band_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -414,6 +478,15 @@ CREATE TABLE "planning_document_template" (
     "name" TEXT,
     "reference" TEXT,
     "required" BOOLEAN NOT NULL DEFAULT false,
+    "section" TEXT,
+    "status" TEXT DEFAULT 'DRAFT',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "fields_json" JSONB,
+    "description" TEXT,
+    "logo_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "engagement_types" JSONB,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -481,6 +554,15 @@ CREATE TABLE "report_document_template" (
     "name" TEXT,
     "reference" TEXT,
     "required" BOOLEAN NOT NULL DEFAULT false,
+    "section" TEXT,
+    "status" TEXT DEFAULT 'DRAFT',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "fields_json" JSONB,
+    "description" TEXT,
+    "logo_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "engagement_types" JSONB,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -587,6 +669,13 @@ CREATE TABLE "organization" (
 CREATE TABLE "sent_email" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "resend_id" TEXT,
+    "delivery_status" TEXT,
+    "delivery_error" TEXT,
+    "retry_count" INTEGER NOT NULL DEFAULT 0,
+    "entity_type" TEXT,
+    "entity_id" TEXT,
+    "reason_label" TEXT,
+    "level" INTEGER,
     "from_email" TEXT,
     "to_emails" JSONB NOT NULL,
     "bcc_emails" JSONB NOT NULL,
@@ -640,6 +729,7 @@ CREATE TABLE "stored_file" (
     "data" BYTEA,
     "entity_type" TEXT,
     "entity_id" TEXT,
+    "view_roles" JSONB,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -654,38 +744,6 @@ CREATE TABLE "stored_file" (
 );
 
 -- CreateTable
-CREATE TABLE "strategic_objective" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-    "name" TEXT,
-    "description" TEXT,
-    "sort_order" INTEGER,
-    "organization_id" TEXT,
-    "deleted" BOOLEAN NOT NULL DEFAULT false,
-    "created_by" TEXT,
-    "created_at" TIMESTAMPTZ,
-    "updated_by" TEXT,
-    "updated_at" TIMESTAMPTZ,
-
-    CONSTRAINT "strategic_objective_pkey" PRIMARY KEY ("id")
-);
-
-CREATE TABLE "risk_rating_band" (
-    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
-    "label" TEXT,
-    "min_score" INTEGER,
-    "max_score" INTEGER,
-    "color" TEXT,
-    "sort_order" INTEGER,
-    "organization_id" TEXT,
-    "deleted" BOOLEAN NOT NULL DEFAULT false,
-    "created_by" TEXT,
-    "created_at" TIMESTAMPTZ,
-    "updated_by" TEXT,
-    "updated_at" TIMESTAMPTZ,
-
-    CONSTRAINT "risk_rating_band_pkey" PRIMARY KEY ("id")
-);
-
 CREATE TABLE "risk_assessment" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "risk_ref" TEXT,
@@ -725,6 +783,7 @@ CREATE TABLE "risk_assessment" (
 CREATE TABLE "escalation_rule" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "trigger" TEXT,
+    "entity_kind" TEXT,
     "days" INTEGER,
     "notify_owner" BOOLEAN NOT NULL DEFAULT false,
     "notify_supervisor" BOOLEAN NOT NULL DEFAULT false,
@@ -738,6 +797,7 @@ CREATE TABLE "escalation_rule" (
     CONSTRAINT "escalation_rule_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
 CREATE TABLE "corrective_action" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "finding_id" TEXT,
@@ -785,8 +845,18 @@ CREATE TABLE "task" (
     "engagement_id" TEXT,
     "stage" TEXT,
     "assignee_user_id" TEXT,
+    "start_date" TIMESTAMPTZ,
     "due_date" TIMESTAMPTZ,
     "status" TEXT,
+    "priority" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "supervisor_user_id" TEXT,
+    "review_status" TEXT,
+    "reviewed_by" TEXT,
+    "reviewed_date" TIMESTAMPTZ,
+    "review_comment" TEXT,
+    "risk_id" TEXT,
+    "escalation_level" INTEGER NOT NULL DEFAULT 0,
     "escalated" BOOLEAN NOT NULL DEFAULT false,
     "completed_date" TIMESTAMPTZ,
     "organization_id" TEXT,
@@ -810,6 +880,10 @@ CREATE TABLE "time_entry" (
     "work_date" TIMESTAMPTZ,
     "hours" DECIMAL(65,30),
     "description" TEXT,
+    "activity_type" TEXT,
+    "status" TEXT,
+    "task_id" TEXT,
+    "timesheet_id" TEXT,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -831,6 +905,12 @@ CREATE TABLE "expense" (
     "description" TEXT,
     "amount" DECIMAL(65,30),
     "expense_date" TIMESTAMPTZ,
+    "category" TEXT,
+    "status" TEXT,
+    "receipt_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "rejection_reason" TEXT,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -842,6 +922,230 @@ CREATE TABLE "expense" (
     "deleted_at" TIMESTAMPTZ,
 
     CONSTRAINT "expense_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "engagement_team_member" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "engagement_id" TEXT,
+    "user_id" TEXT,
+    "role" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "start_date" TIMESTAMPTZ,
+    "end_date" TIMESTAMPTZ,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMPTZ,
+
+    CONSTRAINT "engagement_team_member_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "leave_request" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "user_id" TEXT,
+    "leave_type" TEXT,
+    "start_date" TIMESTAMPTZ,
+    "end_date" TIMESTAMPTZ,
+    "status" TEXT,
+    "reason" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMPTZ,
+
+    CONSTRAINT "leave_request_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public_holiday" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "holiday_date" TIMESTAMPTZ,
+    "name" TEXT,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "public_holiday_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "timesheet" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "user_id" TEXT,
+    "week_start" TIMESTAMPTZ,
+    "status" TEXT,
+    "submitted_date" TIMESTAMPTZ,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "comment" TEXT,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "timesheet_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "resource_setting" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "setting_key" TEXT,
+    "setting_value" TEXT,
+    "organization_id" TEXT,
+
+    CONSTRAINT "resource_setting_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_dependency" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "task_id" TEXT,
+    "depends_on_task_id" TEXT,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "task_dependency_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_template" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "engagement_type_id" TEXT,
+    "stage" TEXT,
+    "title" TEXT,
+    "days_offset" INTEGER,
+    "default_role" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "sort" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "task_template_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_stage" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "name" TEXT,
+    "sort" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "task_stage_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "working_paper" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "engagement_id" TEXT,
+    "reference" TEXT,
+    "title" TEXT,
+    "preparer_id" TEXT,
+    "prepared_date" TIMESTAMPTZ,
+    "reviewer_id" TEXT,
+    "reviewed_date" TIMESTAMPTZ,
+    "status" TEXT,
+    "review_comment" TEXT,
+    "finding_id" TEXT,
+    "template_id" TEXT,
+    "values_json" JSONB,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "working_paper_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "template_version" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "template_id" TEXT NOT NULL,
+    "template_kind" TEXT,
+    "version" INTEGER,
+    "name" TEXT,
+    "description" TEXT,
+    "fields_json" JSONB,
+    "changed_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+
+    CONSTRAINT "template_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "document_acknowledgement" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "document_id" TEXT,
+    "user_id" TEXT,
+    "acked_at" TIMESTAMPTZ,
+
+    CONSTRAINT "document_acknowledgement_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "document_version" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "document_id" TEXT,
+    "version_no" INTEGER,
+    "file_id" TEXT,
+    "effective_date" TIMESTAMPTZ,
+    "review_date" TIMESTAMPTZ,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMPTZ,
+    "uploaded_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "document_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "plan_version" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "plan_id" TEXT,
+    "version_no" INTEGER,
+    "snapshot" JSONB,
+    "revised_by" TEXT,
+    "revision_reason" TEXT,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "plan_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "email_setting" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "mode" TEXT NOT NULL DEFAULT 'DEMO',
+    "sender_name" TEXT,
+    "sender_email" TEXT,
+    "restrict_to_approved" BOOLEAN NOT NULL DEFAULT true,
+    "redirect_all_to" TEXT,
+    "approved_addresses" JSONB,
+    "last_run_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+    "organization_id" TEXT,
+
+    CONSTRAINT "email_setting_pkey" PRIMARY KEY ("id")
 );
 
 -- AddForeignKey
@@ -992,6 +1296,9 @@ ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_engagement_fieldwor_fkey" FOREIGN KEY ("engagement_fieldwork_document_id") REFERENCES "engagement_fieldwork_document"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_source_risk_id_fkey" FOREIGN KEY ("source_risk_id") REFERENCES "risk_assessment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_prepared_by_engagem_fkey" FOREIGN KEY ("prepared_by_engagement_auditor_id") REFERENCES "engagement_auditor"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -999,6 +1306,12 @@ ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_
 
 -- AddForeignKey
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "strategic_objective" ADD CONSTRAINT "strategic_objective_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "risk_rating_band" ADD CONSTRAINT "risk_rating_band_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "engagement_planning_document" ADD CONSTRAINT "engagement_planning_document_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1100,13 +1413,25 @@ ALTER TABLE "user" ADD CONSTRAINT "user_organization_id_fkey" FOREIGN KEY ("orga
 ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_linked_planned_engagement_id_fkey" FOREIGN KEY ("linked_planned_engagement_id") REFERENCES "planned_engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_risk_owner_id_fkey" FOREIGN KEY ("risk_owner_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_strategic_objective_id_fkey" FOREIGN KEY ("strategic_objective_id") REFERENCES "strategic_objective"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_assessed_by_id_fkey" FOREIGN KEY ("assessed_by_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "escalation_rule" ADD CONSTRAINT "escalation_rule_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_finding_id_fkey" FOREIGN KEY ("finding_id") REFERENCES "engagement_finding_and_recommendations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_supervisor_user_id_fkey" FOREIGN KEY ("supervisor_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "task" ADD CONSTRAINT "task_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1121,10 +1446,31 @@ ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_user_id_fkey" FOREIGN KEY ("
 ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "task"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_timesheet_id_fkey" FOREIGN KEY ("timesheet_id") REFERENCES "timesheet"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "expense" ADD CONSTRAINT "expense_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "expense" ADD CONSTRAINT "expense_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "engagement_team_member" ADD CONSTRAINT "engagement_team_member_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "engagement_team_member" ADD CONSTRAINT "engagement_team_member_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "leave_request" ADD CONSTRAINT "leave_request_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "timesheet" ADD CONSTRAINT "timesheet_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "working_paper" ADD CONSTRAINT "working_paper_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 
 -- ================= updated_at triggers =================
@@ -1151,6 +1497,8 @@ create trigger trg_engagement_updated before update on "engagement" for each row
 create trigger trg_engagement_fieldwork_document_updated before update on "engagement_fieldwork_document" for each row execute function set_updated_at();
 create trigger trg_fieldwork_document_review_note_updated before update on "fieldwork_document_review_note" for each row execute function set_updated_at();
 create trigger trg_engagement_finding_and_recommendations_updated before update on "engagement_finding_and_recommendations" for each row execute function set_updated_at();
+create trigger trg_strategic_objective_updated before update on "strategic_objective" for each row execute function set_updated_at();
+create trigger trg_risk_rating_band_updated before update on "risk_rating_band" for each row execute function set_updated_at();
 create trigger trg_engagement_planning_document_updated before update on "engagement_planning_document" for each row execute function set_updated_at();
 create trigger trg_planning_document_review_note_updated before update on "planning_document_review_note" for each row execute function set_updated_at();
 create trigger trg_planning_document_template_updated before update on "planning_document_template" for each row execute function set_updated_at();
@@ -1165,10 +1513,25 @@ create trigger trg_sent_email_updated before update on "sent_email" for each row
 create trigger trg_user_updated before update on "user" for each row execute function set_updated_at();
 create trigger trg_stored_file_updated before update on "stored_file" for each row execute function set_updated_at();
 create trigger trg_risk_assessment_updated before update on "risk_assessment" for each row execute function set_updated_at();
+create trigger trg_escalation_rule_updated before update on "escalation_rule" for each row execute function set_updated_at();
 create trigger trg_corrective_action_updated before update on "corrective_action" for each row execute function set_updated_at();
 create trigger trg_task_updated before update on "task" for each row execute function set_updated_at();
 create trigger trg_time_entry_updated before update on "time_entry" for each row execute function set_updated_at();
 create trigger trg_expense_updated before update on "expense" for each row execute function set_updated_at();
+create trigger trg_engagement_team_member_updated before update on "engagement_team_member" for each row execute function set_updated_at();
+create trigger trg_leave_request_updated before update on "leave_request" for each row execute function set_updated_at();
+create trigger trg_public_holiday_updated before update on "public_holiday" for each row execute function set_updated_at();
+create trigger trg_timesheet_updated before update on "timesheet" for each row execute function set_updated_at();
+create trigger trg_resource_setting_updated before update on "resource_setting" for each row execute function set_updated_at();
+create trigger trg_task_dependency_updated before update on "task_dependency" for each row execute function set_updated_at();
+create trigger trg_task_template_updated before update on "task_template" for each row execute function set_updated_at();
+create trigger trg_task_stage_updated before update on "task_stage" for each row execute function set_updated_at();
+create trigger trg_working_paper_updated before update on "working_paper" for each row execute function set_updated_at();
+create trigger trg_template_version_updated before update on "template_version" for each row execute function set_updated_at();
+create trigger trg_document_acknowledgement_updated before update on "document_acknowledgement" for each row execute function set_updated_at();
+create trigger trg_document_version_updated before update on "document_version" for each row execute function set_updated_at();
+create trigger trg_plan_version_updated before update on "plan_version" for each row execute function set_updated_at();
+create trigger trg_email_setting_updated before update on "email_setting" for each row execute function set_updated_at();
 
 -- ===================== ROW LEVEL SECURITY =============================
 -- Left DISABLED: the app connects as service role / direct connection.
@@ -1189,6 +1552,8 @@ create trigger trg_expense_updated before update on "expense" for each row execu
 -- alter table "engagement_fieldwork_document" enable row level security;
 -- alter table "fieldwork_document_review_note" enable row level security;
 -- alter table "engagement_finding_and_recommendations" enable row level security;
+-- alter table "strategic_objective" enable row level security;
+-- alter table "risk_rating_band" enable row level security;
 -- alter table "engagement_planning_document" enable row level security;
 -- alter table "planning_document_review_note" enable row level security;
 -- alter table "planning_document_template" enable row level security;
@@ -1203,243 +1568,22 @@ create trigger trg_expense_updated before update on "expense" for each row execu
 -- alter table "user" enable row level security;
 -- alter table "stored_file" enable row level security;
 -- alter table "risk_assessment" enable row level security;
+-- alter table "escalation_rule" enable row level security;
 -- alter table "corrective_action" enable row level security;
 -- alter table "task" enable row level security;
 -- alter table "time_entry" enable row level security;
 -- alter table "expense" enable row level security;
-
--- =====================================================================
--- INDEXES
--- Postgres does NOT auto-index foreign key columns. Without these, joins
--- and ON DELETE checks do full table scans as data grows.
--- =====================================================================
-
--- Uniqueness (login identity + API key lookup)
-create unique index if not exists "user_email_lower_key" on "user" (lower("email")) where "email" is not null;
-create unique index if not exists "api_key_key_hash_key" on "api_key" ("key_hash") where "key_hash" is not null;
-
--- One index per foreign key column
-create index if not exists "annual_audit_plan_authorised_by_id_idx" on "annual_audit_plan" ("authorised_by_id");
-create index if not exists "annual_audit_plan_organization_id_idx" on "annual_audit_plan" ("organization_id");
-create index if not exists "annual_audit_plan_period_id_idx" on "annual_audit_plan" ("period_id");
-create index if not exists "annual_audit_plan_prepared_by_id_idx" on "annual_audit_plan" ("prepared_by_id");
-create index if not exists "annual_audit_plan_period_organization_id_idx" on "annual_audit_plan_period" ("organization_id");
-create index if not exists "api_key_organization_id_idx" on "api_key" ("organization_id");
-create index if not exists "audit_log_organization_id_idx" on "audit_log" ("organization_id");
-create index if not exists "audit_log_user_id_idx" on "audit_log" ("user_id");
-create index if not exists "audit_program_item_review_note_engagement_audit_program_item_id_idx" on "audit_program_item_review_note" ("engagement_audit_program_item_id");
-create index if not exists "audit_program_item_review_note_organization_id_idx" on "audit_program_item_review_note" ("organization_id");
-create index if not exists "audit_program_item_review_note_review_note_id_idx" on "audit_program_item_review_note" ("review_note_id");
-create index if not exists "corrective_action_finding_id_idx" on "corrective_action" ("finding_id");
-create index if not exists "corrective_action_owner_user_id_idx" on "corrective_action" ("owner_user_id");
-create index if not exists "declaration_declaration_section_id_idx" on "declaration" ("declaration_section_id");
-create index if not exists "declaration_organization_id_idx" on "declaration" ("organization_id");
-create index if not exists "declaration_section_organization_id_idx" on "declaration_section" ("organization_id");
-create index if not exists "engagement_annual_audit_plan_id_idx" on "engagement" ("annual_audit_plan_id");
-create index if not exists "engagement_authorised_by_id_idx" on "engagement" ("authorised_by_id");
-create index if not exists "engagement_engagement_type_id_idx" on "engagement" ("engagement_type_id");
-create index if not exists "engagement_organization_id_idx" on "engagement" ("organization_id");
-create index if not exists "engagement_planned_engagement_id_idx" on "engagement" ("planned_engagement_id");
-create index if not exists "engagement_prepared_by_id_idx" on "engagement" ("prepared_by_id");
-create index if not exists "engagement_audit_program_item_authorised_by_engagement_auditor_id_idx" on "engagement_audit_program_item" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_audit_program_item_engagement_id_idx" on "engagement_audit_program_item" ("engagement_id");
-create index if not exists "engagement_audit_program_item_nominated_reviewer_id_idx" on "engagement_audit_program_item" ("nominated_reviewer_id");
-create index if not exists "engagement_audit_program_item_organization_id_idx" on "engagement_audit_program_item" ("organization_id");
-create index if not exists "engagement_audit_program_item_prepared_by_engagement_auditor_id_idx" on "engagement_audit_program_item" ("prepared_by_engagement_auditor_id");
-create index if not exists "engagement_auditor_engagement_id_idx" on "engagement_auditor" ("engagement_id");
-create index if not exists "engagement_auditor_organization_id_idx" on "engagement_auditor" ("organization_id");
-create index if not exists "engagement_auditor_user_id_idx" on "engagement_auditor" ("user_id");
-create index if not exists "engagement_auditor_declaration_authorised_by_engagement_auditor_id_idx" on "engagement_auditor_declaration" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_auditor_declaration_declaration_id_idx" on "engagement_auditor_declaration" ("declaration_id");
-create index if not exists "engagement_auditor_declaration_engagement_auditor_id_idx" on "engagement_auditor_declaration" ("engagement_auditor_id");
-create index if not exists "engagement_auditor_declaration_engagement_id_idx" on "engagement_auditor_declaration" ("engagement_id");
-create index if not exists "engagement_auditor_declaration_organization_id_idx" on "engagement_auditor_declaration" ("organization_id");
-create index if not exists "engagement_fieldwork_document_authorised_by_engagement_auditor_id_idx" on "engagement_fieldwork_document" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_fieldwork_document_engagement_audit_program_item_id_idx" on "engagement_fieldwork_document" ("engagement_audit_program_item_id");
-create index if not exists "engagement_fieldwork_document_engagement_id_idx" on "engagement_fieldwork_document" ("engagement_id");
-create index if not exists "engagement_fieldwork_document_nominated_reviewer_id_idx" on "engagement_fieldwork_document" ("nominated_reviewer_id");
-create index if not exists "engagement_fieldwork_document_organization_id_idx" on "engagement_fieldwork_document" ("organization_id");
-create index if not exists "engagement_fieldwork_document_prepared_by_engagement_auditor_id_idx" on "engagement_fieldwork_document" ("prepared_by_engagement_auditor_id");
-create index if not exists "engagement_finding_and_recommendations_authorised_by_engagement_auditor_id_idx" on "engagement_finding_and_recommendations" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_finding_and_recommendations_engagement_fieldwork_document_id_idx" on "engagement_finding_and_recommendations" ("engagement_fieldwork_document_id");
-create index if not exists "engagement_finding_and_recommendations_engagement_id_idx" on "engagement_finding_and_recommendations" ("engagement_id");
-create index if not exists "engagement_finding_and_recommendations_organization_id_idx" on "engagement_finding_and_recommendations" ("organization_id");
-create index if not exists "engagement_finding_and_recommendations_prepared_by_engagement_auditor_id_idx" on "engagement_finding_and_recommendations" ("prepared_by_engagement_auditor_id");
-create index if not exists "engagement_planning_document_authorised_by_engagement_auditor_id_idx" on "engagement_planning_document" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_planning_document_engagement_id_idx" on "engagement_planning_document" ("engagement_id");
-create index if not exists "engagement_planning_document_nominated_reviewer_id_idx" on "engagement_planning_document" ("nominated_reviewer_id");
-create index if not exists "engagement_planning_document_organization_id_idx" on "engagement_planning_document" ("organization_id");
-create index if not exists "engagement_planning_document_planning_document_template_id_idx" on "engagement_planning_document" ("planning_document_template_id");
-create index if not exists "engagement_planning_document_prepared_by_engagement_auditor_id_idx" on "engagement_planning_document" ("prepared_by_engagement_auditor_id");
-create index if not exists "engagement_report_document_authorised_by_engagement_auditor_id_idx" on "engagement_report_document" ("authorised_by_engagement_auditor_id");
-create index if not exists "engagement_report_document_engagement_id_idx" on "engagement_report_document" ("engagement_id");
-create index if not exists "engagement_report_document_nominated_reviewer_id_idx" on "engagement_report_document" ("nominated_reviewer_id");
-create index if not exists "engagement_report_document_organization_id_idx" on "engagement_report_document" ("organization_id");
-create index if not exists "engagement_report_document_prepared_by_engagement_auditor_id_idx" on "engagement_report_document" ("prepared_by_engagement_auditor_id");
-create index if not exists "engagement_report_document_report_document_template_id_idx" on "engagement_report_document" ("report_document_template_id");
-create index if not exists "engagement_type_organization_id_idx" on "engagement_type" ("organization_id");
-create index if not exists "expense_engagement_id_idx" on "expense" ("engagement_id");
-create index if not exists "expense_user_id_idx" on "expense" ("user_id");
-create index if not exists "fieldwork_document_review_note_engagement_fieldwork_document_id_idx" on "fieldwork_document_review_note" ("engagement_fieldwork_document_id");
-create index if not exists "fieldwork_document_review_note_organization_id_idx" on "fieldwork_document_review_note" ("organization_id");
-create index if not exists "fieldwork_document_review_note_review_note_id_idx" on "fieldwork_document_review_note" ("review_note_id");
-create index if not exists "guiding_document_organization_id_idx" on "guiding_document" ("organization_id");
-create index if not exists "planned_engagement_annual_audit_plan_id_idx" on "planned_engagement" ("annual_audit_plan_id");
-create index if not exists "planned_engagement_assigned_senior_auditor_id_idx" on "planned_engagement" ("assigned_senior_auditor_id");
-create index if not exists "planned_engagement_authorised_by_id_idx" on "planned_engagement" ("authorised_by_id");
-create index if not exists "planned_engagement_engagement_type_id_idx" on "planned_engagement" ("engagement_type_id");
-create index if not exists "planned_engagement_organization_id_idx" on "planned_engagement" ("organization_id");
-create index if not exists "planned_engagement_prepared_by_id_idx" on "planned_engagement" ("prepared_by_id");
-create index if not exists "planning_document_review_note_engagement_planning_document_id_idx" on "planning_document_review_note" ("engagement_planning_document_id");
-create index if not exists "planning_document_review_note_organization_id_idx" on "planning_document_review_note" ("organization_id");
-create index if not exists "planning_document_review_note_review_note_id_idx" on "planning_document_review_note" ("review_note_id");
-create index if not exists "planning_document_template_organization_id_idx" on "planning_document_template" ("organization_id");
-create index if not exists "report_document_review_note_engagement_report_document_id_idx" on "report_document_review_note" ("engagement_report_document_id");
-create index if not exists "report_document_review_note_organization_id_idx" on "report_document_review_note" ("organization_id");
-create index if not exists "report_document_review_note_review_note_id_idx" on "report_document_review_note" ("review_note_id");
-create index if not exists "report_document_template_organization_id_idx" on "report_document_template" ("organization_id");
-create index if not exists "review_note_cleared_by_engagement_auditor_id_idx" on "review_note" ("cleared_by_engagement_auditor_id");
-create index if not exists "review_note_engagement_id_idx" on "review_note" ("engagement_id");
-create index if not exists "review_note_organization_id_idx" on "review_note" ("organization_id");
-create index if not exists "review_note_reviewer_cae_id_idx" on "review_note" ("reviewer_cae_id");
-create index if not exists "review_note_reviewer_engagement_auditor_id_idx" on "review_note" ("reviewer_engagement_auditor_id");
-create index if not exists "review_note_verified_by_cae_id_idx" on "review_note" ("verified_by_cae_id");
-create index if not exists "review_note_verified_by_engagement_auditor_id_idx" on "review_note" ("verified_by_engagement_auditor_id");
-create index if not exists "risk_assessment_assessed_by_id_idx" on "risk_assessment" ("assessed_by_id");
-create index if not exists "risk_assessment_linked_planned_engagement_id_idx" on "risk_assessment" ("linked_planned_engagement_id");
-create index if not exists "sent_email_organization_id_idx" on "sent_email" ("organization_id");
-create index if not exists "task_assignee_user_id_idx" on "task" ("assignee_user_id");
-create index if not exists "task_engagement_id_idx" on "task" ("engagement_id");
-create index if not exists "time_entry_engagement_id_idx" on "time_entry" ("engagement_id");
-create index if not exists "time_entry_user_id_idx" on "time_entry" ("user_id");
-create index if not exists "user_organization_id_idx" on "user" ("organization_id");
-
--- Hot query paths (dashboard escalation, reports, REST API updated_since)
-create index if not exists "audit_log_org_timestamp_idx" on "audit_log" ("organization_id", "timestamp" desc);
-create index if not exists "audit_log_table_record_idx" on "audit_log" ("table_name", "record_id");
-create index if not exists "task_org_status_due_idx" on "task" ("organization_id", "status", "due_date");
-create index if not exists "corrective_action_org_status_due_idx" on "corrective_action" ("organization_id", "status", "due_date");
-create index if not exists "engagement_org_updated_idx" on "engagement" ("organization_id", "updated_at" desc);
-create index if not exists "finding_org_updated_idx" on "engagement_finding_and_recommendations" ("organization_id", "updated_at" desc);
-
--- task scheduling additions
-alter table task add column if not exists start_date timestamptz;
-alter table task add column if not exists priority text;
-alter table task add column if not exists planned_hours numeric;
-alter table task add column if not exists supervisor_user_id text;
-alter table task add column if not exists review_status text;
-alter table task add column if not exists reviewed_by text;
-alter table task add column if not exists reviewed_date timestamptz;
-alter table task add column if not exists review_comment text;
-alter table task add column if not exists risk_id text;
-alter table task add column if not exists escalation_level int default 0;
-create table if not exists task_dependency (id text primary key, task_id text, depends_on_task_id text, created_at timestamptz);
-create table if not exists task_template (id text primary key, engagement_type_id text, stage text, title text, days_offset int, default_role text, planned_hours numeric, sort int, organization_id text, deleted boolean default false, created_at timestamptz);
-create table if not exists task_stage (id text primary key, name text, sort int, organization_id text, deleted boolean default false);
-
--- Engagement workspace additions (additive)
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "objectives" TEXT;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "scope_text" TEXT;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "planning_approved_by" TEXT;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "planning_approved_date" TIMESTAMPTZ;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_template_id" TEXT;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_approved_by" TEXT;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_approved_date" TIMESTAMPTZ;
-ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_status" TEXT;
-
-CREATE TABLE IF NOT EXISTS "working_paper" (
-  "id" TEXT PRIMARY KEY,
-  "engagement_id" TEXT REFERENCES "engagement"("id"),
-  "reference" TEXT,
-  "title" TEXT,
-  "preparer_id" TEXT,
-  "prepared_date" TIMESTAMPTZ,
-  "reviewer_id" TEXT,
-  "reviewed_date" TIMESTAMPTZ,
-  "status" TEXT,
-  "review_comment" TEXT,
-  "finding_id" TEXT,
-  "organization_id" TEXT,
-  "disabled" BOOLEAN DEFAULT false,
-  "deleted" BOOLEAN DEFAULT false,
-  "created_by" TEXT,
-  "created_at" TIMESTAMPTZ,
-  "updated_by" TEXT,
-  "updated_at" TIMESTAMPTZ
-);
-
--- Document template customisation (additive)
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "section" TEXT;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "version" INT DEFAULT 1;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "fields_json" JSONB;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "description" TEXT;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "logo_file_id" TEXT;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
-ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "engagement_types" JSONB;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "section" TEXT;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "version" INT DEFAULT 1;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "fields_json" JSONB;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "description" TEXT;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "logo_file_id" TEXT;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
-ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "engagement_types" JSONB;
-ALTER TABLE "working_paper" ADD COLUMN IF NOT EXISTS "template_id" TEXT;
-ALTER TABLE "working_paper" ADD COLUMN IF NOT EXISTS "values_json" JSONB;
-
-CREATE TABLE IF NOT EXISTS "template_version" (
-  "id" TEXT PRIMARY KEY,
-  "template_id" TEXT,
-  "template_kind" TEXT,
-  "version" INT,
-  "name" TEXT,
-  "description" TEXT,
-  "fields_json" JSONB,
-  "changed_by" TEXT,
-  "created_at" TIMESTAMPTZ,
-  "approved_by" TEXT,
-  "approved_date" TIMESTAMPTZ
-);
-
--- Guiding document repository (additive)
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "category" TEXT;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "version" TEXT;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "version_no" INT DEFAULT 1;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "effective_date" TIMESTAMPTZ;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "review_date" TIMESTAMPTZ;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "view_roles" JSONB;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "edit_roles" JSONB;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "engagement_ids" JSONB;
-ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "text_extract" TEXT;
-ALTER TABLE "stored_file" ADD COLUMN IF NOT EXISTS "view_roles" JSONB;
-
-CREATE TABLE IF NOT EXISTS "document_acknowledgement" (
-  "id" TEXT PRIMARY KEY, "document_id" TEXT, "user_id" TEXT, "acked_at" TIMESTAMPTZ
-);
-CREATE TABLE IF NOT EXISTS "document_version" (
-  "id" TEXT PRIMARY KEY, "document_id" TEXT, "version_no" INT, "file_id" TEXT,
-  "effective_date" TIMESTAMPTZ, "review_date" TIMESTAMPTZ,
-  "approved_by" TEXT, "approved_date" TIMESTAMPTZ, "uploaded_by" TEXT, "created_at" TIMESTAMPTZ
-);
-
--- Risk-based audit plan (additive)
-ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
-ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "committee_signed_by" TEXT;
-ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "committee_signed_date" TIMESTAMPTZ;
-ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "revision_reason" TEXT;
-ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "version_no" INT DEFAULT 1;
-ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "planned_hours" NUMERIC;
-ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "quarter" TEXT;
-ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'PLANNED';
-ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "lead_user_id" TEXT;
-ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "risk_id" TEXT;
-
-CREATE TABLE IF NOT EXISTS "plan_version" (
-  "id" TEXT PRIMARY KEY, "plan_id" TEXT, "version_no" INT, "snapshot" JSONB,
-  "revised_by" TEXT, "revision_reason" TEXT, "created_at" TIMESTAMPTZ
-);
+-- alter table "engagement_team_member" enable row level security;
+-- alter table "leave_request" enable row level security;
+-- alter table "public_holiday" enable row level security;
+-- alter table "timesheet" enable row level security;
+-- alter table "resource_setting" enable row level security;
+-- alter table "task_dependency" enable row level security;
+-- alter table "task_template" enable row level security;
+-- alter table "task_stage" enable row level security;
+-- alter table "working_paper" enable row level security;
+-- alter table "template_version" enable row level security;
+-- alter table "document_acknowledgement" enable row level security;
+-- alter table "document_version" enable row level security;
+-- alter table "plan_version" enable row level security;
+-- alter table "email_setting" enable row level security;

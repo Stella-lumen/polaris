@@ -1,151 +1,139 @@
 import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { ruleFires } from "@/lib/escalation-rules";
+import { deliverEmail } from "@/lib/mailer";
 
 /**
- * Automated escalation, rule-driven. Each escalation_rule fires at most once
- * per corrective action (dedup key esc:ca:{ruleId}:{actionId}), so the same
- * level can never notify twice. Tasks keep the daily 7-day-window reminder.
- * Everything lands in the sent_email outbox — production swaps the writer
- * for a real SMTP/Resend send.
+ * The single shared escalation engine for tasks and corrective actions.
+ *
+ * How it works:
+ *  - Every rule lives in the escalation_rule table (admins can edit the
+ *    timings). Rules are evaluated per item and only the highest-severity
+ *    matching rule fires — one notification per item per run.
+ *  - A level is sent once per item and per recipient. The dedup key
+ *    "esc:{kind}:{level}:{itemId}" is stored on the outbox row; before
+ *    sending we check whether that level already reached this person.
+ *  - Completed, verified or closed items never escalate.
+ *  - Every notification is written to the outbox and to Audit Logs, and the
+ *    outbox row links back to the task or action it is about.
  */
 export async function escalateOverdueWork() {
   const now = new Date();
-  const day = now.toISOString().slice(0, 10);
   const DAY = 86400_000;
-  const in7 = new Date(now.getTime() + 7 * DAY);
-  const scope = { deleted: false, organization_id: DEMO_ORGANIZATION_ID };
 
-  const [tasks, actions, rules, admins, cae] = await Promise.all([
+  const [tasks, actions, rules, users] = await Promise.all([
     prisma.task.findMany({
-      where: { ...scope, status: { not: "DONE" } },
+      where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, status: { notIn: ["DONE", "CLOSED"] } },
       include: { r_assignee: true, r_engagement: true },
     }),
     prisma.correctiveAction.findMany({
-      where: { ...scope, status: { not: "VERIFIED" } },
+      where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, status: { notIn: ["VERIFIED", "CLOSED"] } },
       include: { r_owner: true, r_supervisor: true },
     }),
     prisma.escalationRule.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, orderBy: { sort_order: "asc" } }),
-    prisma.user.findMany({
-      where: { deleted: false, disabled: false, role: "org:admin" },
-      select: { email: true },
-    }),
-    prisma.user.findMany({
-      where: { deleted: false, disabled: false, role: "org:chief_audit_executive" },
-      select: { email: true },
-    }),
+    prisma.user.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, select: { id: true, email: true, role: true, first_name: true, last_name: true } }),
   ]);
-  const adminEmails = admins.map((u) => u.email).filter(Boolean) as string[];
-  const caeEmails = cae.map((u) => u.email).filter(Boolean) as string[];
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const caeEmails = users.filter((u) => u.role === "org:chief_audit_executive").map((u) => u.email).filter(Boolean) as string[];
+  const adminEmails = users.filter((u) => u.role === "org:admin").map((u) => u.email).filter(Boolean) as string[];
+  const fallback = adminEmails[0] ?? caeEmails[0] ?? "";
 
-  const items: { dedup: string; to: string[]; cc: string[]; subject: string; body: string }[] = [];
-  const levelBumps: { id: string; level: number }[] = [];
-  const taskBumps: { id: string; level: number }[] = [];
-  const supUsers = await prisma.user.findMany({ where: { deleted: false }, select: { id: true, email: true } });
-  const supervisors = new Map(supUsers.map((u) => [u.id, u.email ?? ""]));
+  const taskRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "task");
+  const caRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "corrective_action");
 
-  // ---- tasks: rule-based levels (same dedup-once pattern as corrective actions) ----
+  type Notice = { kind: string; itemId: string; level: number; ruleId: string; to: string[]; cc: string[]; subject: string; reason: string; body: string };
+  const notices: Notice[] = [];
+
   for (const t of tasks) {
-    const daysToDue = t.due_date ? Math.floor((t.due_date.getTime() - now.getTime()) / DAY) : null;
-    const daysOverdue = t.due_date ? Math.floor((now.getTime() - t.due_date.getTime()) / DAY) : null;
-    const daysInReview = t.review_status === "READY_FOR_REVIEW" && t.updated_at ? Math.floor((now.getTime() - t.updated_at.getTime()) / DAY) : null;
-    const supEmail = t.supervisor_user_id ? (supervisors.get(t.supervisor_user_id) ?? null) : null;
-
-    const fire = (level: number, trig: string, d: number, to: string[], cc: string[], label: string) => {
-      items.push({
-        dedup: `esc:task:${trig}:${t.id}`,
-        to: to.length ? to : [adminEmails[0] ?? ""],
-        cc,
-        subject: `[ESCALATION L${level}] Task ${label}: ${t.title}`,
-        body: `Task "${t.title}" (${t.r_engagement?.engagement_name ?? "unlinked"}) assigned to ${t.r_assignee?.first_name ?? ""} ${t.r_assignee?.last_name ?? ""} is ${label} — due ${t.due_date?.toISOString().slice(0, 10) ?? "—"}. Status: ${t.status}.`,
-      });
-      if (level > (t.escalation_level ?? 0)) taskBumps.push({ id: t.id, level });
+    const ctx = {
+      daysToDue: t.due_date ? Math.floor((t.due_date.getTime() - now.getTime()) / DAY) : null,
+      daysOverdue: t.due_date ? Math.floor((now.getTime() - t.due_date.getTime()) / DAY) : null,
+      daysUnverified: null,
+      daysInReview: t.review_status === "READY_FOR_REVIEW" && t.updated_at ? Math.floor((now.getTime() - t.updated_at.getTime()) / DAY) : null,
+      status: t.status,
     };
-
-    if (ruleFires("TASK_DAYS_OVERDUE", 7, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
-      fire(3, "overdue7", 7, [t.r_assignee?.email ?? ""], [...caeEmails, ...(supEmail ? [supEmail] : [])], `overdue by ${daysOverdue} days`);
-    else if (ruleFires("TASK_DUE_PASSED", 0, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
-      fire(2, "duepassed", 0, [t.r_assignee?.email ?? "", ...(supEmail ? [supEmail] : [])], adminEmails, `overdue by ${daysOverdue} days`);
-    else if (ruleFires("TASK_DAYS_BEFORE_DUE", 2, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
-      fire(1, "before2", 2, [t.r_assignee?.email ?? "", ...(supEmail ? [supEmail] : [])], [], `due in ${daysToDue} days`);
-    else if (ruleFires("TASK_DAYS_BEFORE_DUE", 7, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
-      fire(1, "before7", 7, [t.r_assignee?.email ?? ""], [], `due in ${daysToDue} days`);
-    if (ruleFires("REVIEW_PENDING_DAYS", 3, { daysToDue, daysOverdue, daysUnverified: null, daysInReview, status: t.status }))
-      fire(1, "review3", 3, [supEmail ?? ""], [], `waiting for review for ${daysInReview} days`);
+    const winner = taskRules.filter((r) => ruleFires(r.trigger, r.days, ctx)).pop();
+    if (!winner) continue;
+    const level = taskRules.indexOf(winner) + 1;
+    const sup = t.supervisor_user_id ? byId.get(t.supervisor_user_id) : null;
+    const assignee = t.r_assignee?.email ?? "";
+    const to = [assignee].filter(Boolean);
+    const cc: string[] = [];
+    if (winner.notify_supervisor && sup?.email) cc.push(sup.email);
+    if (winner.notify_cae) cc.push(...caeEmails);
+    if (winner.notify_hod) cc.push(...adminEmails);
+    if (level >= 2 && sup?.email && !cc.includes(sup.email)) cc.push(sup.email); // supervisors copied on later levels
+    const reason = ctx.daysOverdue != null && ctx.daysOverdue > 0
+      ? `Overdue: task is ${ctx.daysOverdue} day${ctx.daysOverdue === 1 ? "" : "s"} overdue${ctx.daysOverdue >= 7 ? " — escalated to supervisor" : ""}`
+      : `Reminder: task due in ${ctx.daysToDue} day${ctx.daysToDue === 1 ? "" : "s"}`;
+    notices.push({
+      kind: "task", itemId: t.id, level, ruleId: winner.id,
+      to: to.length ? to : [fallback].filter(Boolean), cc,
+      subject: `${reason} — ${t.title}`,
+      reason,
+      body: `Task "${t.title}" (${t.r_engagement?.engagement_name ?? "not linked to an engagement"}) assigned to ${[t.r_assignee?.first_name, t.r_assignee?.last_name].filter(Boolean).join(" ") || "an unassigned user"} is ${ctx.daysOverdue ? `overdue by ${ctx.daysOverdue} day(s)` : `due in ${ctx.daysToDue} day(s)`} — due date ${t.due_date?.toISOString().slice(0, 10) ?? "not set"}.`,
+    });
   }
 
-  // ---- corrective actions: each rule fires once per action ----
   for (const a of actions) {
-    const daysToDue = a.due_date ? Math.floor((a.due_date.getTime() - now.getTime()) / DAY) : null;
-    const daysOverdue = a.due_date ? Math.floor((now.getTime() - a.due_date.getTime()) / DAY) : null;
-    const daysUnverified = a.implemented_date ? Math.floor((now.getTime() - a.implemented_date.getTime()) / DAY) : null;
-
-    for (const rule of rules) {
-      const d = rule.days ?? 0;
-      if (!ruleFires(rule.trigger, rule.days, { daysToDue, daysOverdue, daysUnverified, status: a.status })) continue;
-
-      const to: string[] = [];
-      if (rule.notify_owner && a.r_owner?.email) to.push(a.r_owner.email);
-      if (rule.notify_supervisor && a.r_supervisor?.email) to.push(a.r_supervisor.email);
-      if (rule.notify_hod && a.r_supervisor?.email) to.push(a.r_supervisor.email);
-      const cc: string[] = [];
-      if (rule.notify_hod) cc.push(...adminEmails);
-      if (rule.notify_cae) cc.push(...caeEmails);
-      if (!to.length) to.push(adminEmails[0] ?? "");
-
-      const label = rule.trigger === "DAYS_BEFORE_DUE" ? `due in ${daysToDue}d` : rule.trigger === "ON_DUE_NOT_DONE" ? "overdue — not implemented" : rule.trigger === "DAYS_OVERDUE" ? `${daysOverdue}d overdue` : `implemented, unverified ${daysUnverified}d`;
-      items.push({
-        dedup: `esc:ca:${rule.id}:${a.id}`,
-        to,
-        cc,
-        subject: `[ESCALATION L${rule.sort_order}] Corrective action ${label}`,
-        body: `Corrective action "${(a.action_description ?? "").slice(0, 140)}" (owner: ${a.r_owner?.first_name ?? ""} ${a.r_owner?.last_name ?? ""}, due ${a.due_date?.toISOString().slice(0, 10) ?? "—"}, status ${a.status}) triggered escalation rule ${rule.trigger}${d ? ` @${d}d` : ""}.${rule.notify_cae ? " Flagged for the audit committee report." : ""}`,
-      });
-      if ((rule.sort_order ?? 0) > (a.escalation_level ?? 0)) levelBumps.push({ id: a.id, level: rule.sort_order ?? 0 });
-    }
+    const ctx = {
+      daysToDue: a.due_date ? Math.floor((a.due_date.getTime() - now.getTime()) / DAY) : null,
+      daysOverdue: a.due_date ? Math.floor((now.getTime() - a.due_date.getTime()) / DAY) : null,
+      daysUnverified: a.implemented_date ? Math.floor((now.getTime() - a.implemented_date.getTime()) / DAY) : null,
+      status: a.status,
+    };
+    const winner = caRules.filter((r) => ruleFires(r.trigger, r.days, ctx)).pop();
+    if (!winner) continue;
+    const level = caRules.indexOf(winner) + 1;
+    const to: string[] = [], cc: string[] = [];
+    if (winner.notify_owner && a.r_owner?.email) to.push(a.r_owner.email);
+    if (winner.notify_supervisor && a.r_supervisor?.email) cc.push(a.r_supervisor.email);
+    if (winner.notify_cae) cc.push(...caeEmails);
+    if (winner.notify_hod) cc.push(...adminEmails);
+    const reason = winner.trigger === "UNVERIFIED_DAYS"
+      ? "Corrective action implemented but not yet verified"
+      : ctx.daysOverdue != null && ctx.daysOverdue > 0
+        ? `Overdue: corrective action overdue by ${ctx.daysOverdue} day${ctx.daysOverdue === 1 ? "" : "s"}${level >= 3 ? " — escalated to management" : ""}`
+        : `Reminder: corrective action due in ${ctx.daysToDue} day${ctx.daysToDue === 1 ? "" : "s"}`;
+    notices.push({
+      kind: "corrective_action", itemId: a.id, level, ruleId: winner.id,
+      to: to.length ? to : [fallback].filter(Boolean), cc,
+      subject: `${reason} — ${(a.action_description ?? "Corrective action").slice(0, 80)}`,
+      reason,
+      body: `Corrective action "${(a.action_description ?? "").slice(0, 120)}" owned by ${[a.r_owner?.first_name, a.r_owner?.last_name].filter(Boolean).join(" ") || "an unassigned user"} — ${reason.toLowerCase()}. Due date ${a.due_date?.toISOString().slice(0, 10) ?? "not set"}; status ${(a.status ?? "").toLowerCase().replace(/_/g, " ")}.`,
+    });
   }
 
-  const existing = await prisma.sentEmail.findMany({
-    where: { id: { in: items.map((i) => i.dedup) } },
-    select: { id: true },
-  });
-  const done = new Set(existing.map((e) => e.id));
-  const fresh = items.filter((i) => i.to[0] && !done.has(i.dedup));
-  if (fresh.length) {
-    await prisma.$transaction(
-      fresh.map((i) =>
-        prisma.sentEmail.upsert({
-          where: { id: i.dedup },
-          update: {},
-          create: {
-            id: i.dedup,
-            resend_id: i.dedup,
-            from_email: "notifications@polaris.internal",
-            to_emails: i.to,
-            cc_emails: i.cc,
-            bcc_emails: [],
-            subject: i.subject,
-            body: i.body,
-            attachments: [],
-            scheduled_at: now,
-            organization_id: DEMO_ORGANIZATION_ID,
-            created_by: "escalation-engine",
-            created_at: now,
-          },
-        }),
-      ),
-    );
-    for (const b of levelBumps) {
-      await prisma.correctiveAction.update({ where: { id: b.id }, data: { escalation_level: b.level } });
-    }
-    for (const b of taskBumps) {
-      await prisma.task.update({ where: { id: b.id }, data: { escalation_level: b.level, escalated: true } });
-    }
-    for (const i of fresh) {
-      await prisma.auditLog.create({
-        data: { organization_id: DEMO_ORGANIZATION_ID, schema_name: "public", table_name: "Corrective Actions", record_id: i.dedup.split(":")[3] ?? i.dedup, operation_type: "ESCALATION", timestamp: now, original_values: {}, new_values: { subject: i.subject, to: i.to }, query: "escalation-engine" },
-      });
-    }
+  // Deliver each notice once per level per recipient.
+  let sent = 0;
+  for (const n of notices) {
+    const prior = await prisma.sentEmail.findMany({ where: { entity_id: n.itemId, level: n.level, deleted: false } });
+    const alreadyTo = new Set(prior.flatMap((e) => [...(e.to_emails as string[] ?? []), ...(e.cc_emails as string[] ?? [])]));
+    const to = n.to.filter((e) => !alreadyTo.has(e));
+    const cc = n.cc.filter((e) => !alreadyTo.has(e) && !to.includes(e));
+    if (!to.length && !cc.length) continue;
+    const row = await prisma.sentEmail.create({
+      data: {
+        resend_id: `esc:${n.kind}:${n.level}:${n.itemId}`,
+        to_emails: to, cc_emails: cc, bcc_emails: [], attachments: [],
+        subject: n.subject, body: n.body, reason_label: n.reason,
+        entity_type: n.kind, entity_id: n.itemId, level: n.level,
+        organization_id: DEMO_ORGANIZATION_ID, created_at: now,
+      },
+    });
+    await deliverEmail(row.id);
+    await prisma.auditLog.create({
+      data: {
+        organization_id: DEMO_ORGANIZATION_ID, schema_name: "public",
+        table_name: n.kind === "task" ? "Tasks" : "Corrective Actions", record_id: n.itemId,
+        operation_type: "NOTIFICATION", timestamp: now, original_values: {},
+        new_values: { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },
+        query: "escalation-engine",
+      },
+    });
+    sent++;
   }
-  return { queued: fresh.length, total: items.length };
+
+  await prisma.emailSetting.updateMany({ where: { organization_id: DEMO_ORGANIZATION_ID }, data: { last_run_at: now } });
+  return { sent, evaluated: notices.length };
 }

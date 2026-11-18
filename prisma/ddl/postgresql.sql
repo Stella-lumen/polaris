@@ -31,6 +31,11 @@ CREATE TABLE "annual_audit_plan" (
     "prepared_date" TIMESTAMP(3),
     "authorised_by_id" TEXT,
     "authorised_date" TIMESTAMP(3),
+    "status" TEXT DEFAULT 'DRAFT',
+    "committee_signed_by" TEXT,
+    "committee_signed_date" TIMESTAMP(3),
+    "revision_reason" TEXT,
+    "version_no" INTEGER NOT NULL DEFAULT 1,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -49,6 +54,17 @@ CREATE TABLE "guiding_document" (
     "id" TEXT NOT NULL,
     "name" TEXT,
     "description" TEXT,
+    "category" TEXT,
+    "version" TEXT,
+    "version_no" INTEGER NOT NULL DEFAULT 1,
+    "effective_date" TIMESTAMP(3),
+    "review_date" TIMESTAMP(3),
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "view_roles" JSONB,
+    "edit_roles" JSONB,
+    "engagement_ids" JSONB,
+    "text_extract" TEXT,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -79,6 +95,11 @@ CREATE TABLE "planned_engagement" (
     "actual_start_date" TIMESTAMP(3),
     "actual_end_date" TIMESTAMP(3),
     "actual_budget" DECIMAL(65,30),
+    "planned_hours" DECIMAL(65,30),
+    "quarter" TEXT,
+    "status" TEXT DEFAULT 'PLANNED',
+    "lead_user_id" TEXT,
+    "risk_id" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" TIMESTAMP(3),
     "authorised_by_id" TEXT,
@@ -122,6 +143,7 @@ CREATE TABLE "engagement_audit_program_item" (
     "risk" TEXT,
     "audit_objective" TEXT,
     "audit_procedure" TEXT,
+    "wp_ref" TEXT,
     "engagement_id" TEXT,
     "prepared_by_engagement_auditor_id" TEXT,
     "prepared_date" TIMESTAMP(3),
@@ -253,6 +275,14 @@ CREATE TABLE "engagement" (
     "end_date" TIMESTAMP(3),
     "engagement_budget" DECIMAL(65,30),
     "engagement_spend" DECIMAL(65,30),
+    "objectives" TEXT,
+    "scope_text" TEXT,
+    "planning_approved_by" TEXT,
+    "planning_approved_date" TIMESTAMP(3),
+    "report_template_id" TEXT,
+    "report_approved_by" TEXT,
+    "report_approved_date" TIMESTAMP(3),
+    "report_status" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" TIMESTAMP(3),
     "authorised_by_id" TEXT,
@@ -267,6 +297,8 @@ CREATE TABLE "engagement" (
     "updated_at" TIMESTAMP(3),
     "deleted_by" TEXT,
     "deleted_at" TIMESTAMP(3),
+    "planned_hours" DECIMAL(65,30),
+    "planned_expense_budget" DECIMAL(65,30),
 
     CONSTRAINT "engagement_pkey" PRIMARY KEY ("id")
 );
@@ -325,6 +357,8 @@ CREATE TABLE "engagement_finding_and_recommendations" (
     "root_cause" TEXT,
     "recommendations" TEXT,
     "management_comment" TEXT,
+    "status" TEXT DEFAULT 'OPEN',
+    "source_risk_id" TEXT,
     "prepared_by_engagement_auditor_id" TEXT,
     "prepared_date" TIMESTAMP(3),
     "authorised_by_engagement_auditor_id" TEXT,
@@ -340,6 +374,40 @@ CREATE TABLE "engagement_finding_and_recommendations" (
     "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "engagement_finding_and_recommendations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "strategic_objective" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "description" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+
+    CONSTRAINT "strategic_objective_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "risk_rating_band" (
+    "id" TEXT NOT NULL,
+    "label" TEXT,
+    "min_score" INTEGER,
+    "max_score" INTEGER,
+    "color" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+
+    CONSTRAINT "risk_rating_band_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -395,6 +463,15 @@ CREATE TABLE "planning_document_template" (
     "name" TEXT,
     "reference" TEXT,
     "required" BOOLEAN NOT NULL DEFAULT false,
+    "section" TEXT,
+    "status" TEXT DEFAULT 'DRAFT',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "fields_json" JSONB,
+    "description" TEXT,
+    "logo_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "engagement_types" JSONB,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -462,6 +539,15 @@ CREATE TABLE "report_document_template" (
     "name" TEXT,
     "reference" TEXT,
     "required" BOOLEAN NOT NULL DEFAULT false,
+    "section" TEXT,
+    "status" TEXT DEFAULT 'DRAFT',
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "fields_json" JSONB,
+    "description" TEXT,
+    "logo_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "engagement_types" JSONB,
     "files" JSONB NOT NULL,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
@@ -506,9 +592,11 @@ CREATE TABLE "api_key" (
     "id" TEXT NOT NULL,
     "name" TEXT,
     "key_hash" TEXT,
+    "key_prefix" TEXT,
     "organization_id" TEXT,
     "scopes" JSONB NOT NULL,
     "expires_at" TIMESTAMP(3),
+    "revoked_at" TIMESTAMP(3),
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
     "last_used_at" TIMESTAMP(3),
@@ -544,6 +632,12 @@ CREATE TABLE "organization" (
     "id" TEXT NOT NULL,
     "clerk_id" TEXT,
     "name" TEXT,
+    "address" TEXT,
+    "contact_email" TEXT,
+    "contact_phone" TEXT,
+    "website" TEXT,
+    "registration_number" TEXT,
+    "logo_file_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
     "created_by" TEXT,
@@ -560,6 +654,13 @@ CREATE TABLE "organization" (
 CREATE TABLE "sent_email" (
     "id" TEXT NOT NULL,
     "resend_id" TEXT,
+    "delivery_status" TEXT,
+    "delivery_error" TEXT,
+    "retry_count" INTEGER NOT NULL DEFAULT 0,
+    "entity_type" TEXT,
+    "entity_id" TEXT,
+    "reason_label" TEXT,
+    "level" INTEGER,
     "from_email" TEXT,
     "to_emails" JSONB NOT NULL,
     "bcc_emails" JSONB NOT NULL,
@@ -613,6 +714,7 @@ CREATE TABLE "stored_file" (
     "data" BYTEA,
     "entity_type" TEXT,
     "entity_id" TEXT,
+    "view_roles" JSONB,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -629,6 +731,7 @@ CREATE TABLE "stored_file" (
 -- CreateTable
 CREATE TABLE "risk_assessment" (
     "id" TEXT NOT NULL,
+    "risk_ref" TEXT,
     "auditable_entity" TEXT,
     "risk_description" TEXT,
     "risk_category" TEXT,
@@ -636,10 +739,16 @@ CREATE TABLE "risk_assessment" (
     "inherent_impact" INTEGER,
     "inherent_score" INTEGER,
     "existing_controls" TEXT,
+    "control_effectiveness" TEXT,
     "residual_likelihood" INTEGER,
     "residual_impact" INTEGER,
     "residual_score" INTEGER,
     "linked_planned_engagement_id" TEXT,
+    "risk_owner_id" TEXT,
+    "strategic_objective_id" TEXT,
+    "source" TEXT DEFAULT 'INTERNAL_AUDIT',
+    "status" TEXT DEFAULT 'OPEN',
+    "next_review_date" TIMESTAMP(3),
     "assessed_by_id" TEXT,
     "assessed_date" TIMESTAMP(3),
     "organization_id" TEXT,
@@ -656,18 +765,50 @@ CREATE TABLE "risk_assessment" (
 );
 
 -- CreateTable
+CREATE TABLE "escalation_rule" (
+    "id" TEXT NOT NULL,
+    "trigger" TEXT,
+    "entity_kind" TEXT,
+    "days" INTEGER,
+    "notify_owner" BOOLEAN NOT NULL DEFAULT false,
+    "notify_supervisor" BOOLEAN NOT NULL DEFAULT false,
+    "notify_cae" BOOLEAN NOT NULL DEFAULT false,
+    "notify_hod" BOOLEAN NOT NULL DEFAULT false,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "escalation_rule_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "corrective_action" (
     "id" TEXT NOT NULL,
     "finding_id" TEXT,
     "action_description" TEXT,
+    "source" TEXT DEFAULT 'INTERNAL_AUDIT',
+    "ag_reference" TEXT,
+    "ag_report_year" INTEGER,
+    "management_response" TEXT,
+    "management_comments" TEXT,
     "owner_user_id" TEXT,
+    "supervisor_user_id" TEXT,
     "due_date" TIMESTAMP(3),
+    "original_due_date" TIMESTAMP(3),
+    "revision_count" INTEGER NOT NULL DEFAULT 0,
+    "revision_reason" TEXT,
+    "revision_approved_by" TEXT,
     "status" TEXT,
     "progress" INTEGER,
     "evidence" TEXT,
     "implemented_date" TIMESTAMP(3),
     "verified_by_id" TEXT,
     "verified_date" TIMESTAMP(3),
+    "verification_outcome" TEXT,
+    "verification_comments" TEXT,
+    "reopened_reason" TEXT,
+    "escalation_level" INTEGER NOT NULL DEFAULT 0,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -689,8 +830,18 @@ CREATE TABLE "task" (
     "engagement_id" TEXT,
     "stage" TEXT,
     "assignee_user_id" TEXT,
+    "start_date" TIMESTAMP(3),
     "due_date" TIMESTAMP(3),
     "status" TEXT,
+    "priority" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "supervisor_user_id" TEXT,
+    "review_status" TEXT,
+    "reviewed_by" TEXT,
+    "reviewed_date" TIMESTAMP(3),
+    "review_comment" TEXT,
+    "risk_id" TEXT,
+    "escalation_level" INTEGER NOT NULL DEFAULT 0,
     "escalated" BOOLEAN NOT NULL DEFAULT false,
     "completed_date" TIMESTAMP(3),
     "organization_id" TEXT,
@@ -714,6 +865,10 @@ CREATE TABLE "time_entry" (
     "work_date" TIMESTAMP(3),
     "hours" DECIMAL(65,30),
     "description" TEXT,
+    "activity_type" TEXT,
+    "status" TEXT,
+    "task_id" TEXT,
+    "timesheet_id" TEXT,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -735,6 +890,12 @@ CREATE TABLE "expense" (
     "description" TEXT,
     "amount" DECIMAL(65,30),
     "expense_date" TIMESTAMP(3),
+    "category" TEXT,
+    "status" TEXT,
+    "receipt_file_id" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "rejection_reason" TEXT,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,
@@ -746,6 +907,230 @@ CREATE TABLE "expense" (
     "deleted_at" TIMESTAMP(3),
 
     CONSTRAINT "expense_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "engagement_team_member" (
+    "id" TEXT NOT NULL,
+    "engagement_id" TEXT,
+    "user_id" TEXT,
+    "role" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "start_date" TIMESTAMP(3),
+    "end_date" TIMESTAMP(3),
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMP(3),
+
+    CONSTRAINT "engagement_team_member_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "leave_request" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT,
+    "leave_type" TEXT,
+    "start_date" TIMESTAMP(3),
+    "end_date" TIMESTAMP(3),
+    "status" TEXT,
+    "reason" TEXT,
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMP(3),
+
+    CONSTRAINT "leave_request_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "public_holiday" (
+    "id" TEXT NOT NULL,
+    "holiday_date" TIMESTAMP(3),
+    "name" TEXT,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "public_holiday_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "timesheet" (
+    "id" TEXT NOT NULL,
+    "user_id" TEXT,
+    "week_start" TIMESTAMP(3),
+    "status" TEXT,
+    "submitted_date" TIMESTAMP(3),
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "comment" TEXT,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_at" TIMESTAMP(3),
+
+    CONSTRAINT "timesheet_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "resource_setting" (
+    "id" TEXT NOT NULL,
+    "setting_key" TEXT,
+    "setting_value" TEXT,
+    "organization_id" TEXT,
+
+    CONSTRAINT "resource_setting_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_dependency" (
+    "id" TEXT NOT NULL,
+    "task_id" TEXT,
+    "depends_on_task_id" TEXT,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "task_dependency_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_template" (
+    "id" TEXT NOT NULL,
+    "engagement_type_id" TEXT,
+    "stage" TEXT,
+    "title" TEXT,
+    "days_offset" INTEGER,
+    "default_role" TEXT,
+    "planned_hours" DECIMAL(65,30),
+    "sort" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "task_template_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "task_stage" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "sort" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "task_stage_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "working_paper" (
+    "id" TEXT NOT NULL,
+    "engagement_id" TEXT,
+    "reference" TEXT,
+    "title" TEXT,
+    "preparer_id" TEXT,
+    "prepared_date" TIMESTAMP(3),
+    "reviewer_id" TEXT,
+    "reviewed_date" TIMESTAMP(3),
+    "status" TEXT,
+    "review_comment" TEXT,
+    "finding_id" TEXT,
+    "template_id" TEXT,
+    "values_json" JSONB,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+
+    CONSTRAINT "working_paper_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "template_version" (
+    "id" TEXT NOT NULL,
+    "template_id" TEXT NOT NULL,
+    "template_kind" TEXT,
+    "version" INTEGER,
+    "name" TEXT,
+    "description" TEXT,
+    "fields_json" JSONB,
+    "changed_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+
+    CONSTRAINT "template_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "document_acknowledgement" (
+    "id" TEXT NOT NULL,
+    "document_id" TEXT,
+    "user_id" TEXT,
+    "acked_at" TIMESTAMP(3),
+
+    CONSTRAINT "document_acknowledgement_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "document_version" (
+    "id" TEXT NOT NULL,
+    "document_id" TEXT,
+    "version_no" INTEGER,
+    "file_id" TEXT,
+    "effective_date" TIMESTAMP(3),
+    "review_date" TIMESTAMP(3),
+    "approved_by" TEXT,
+    "approved_date" TIMESTAMP(3),
+    "uploaded_by" TEXT,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "document_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "plan_version" (
+    "id" TEXT NOT NULL,
+    "plan_id" TEXT,
+    "version_no" INTEGER,
+    "snapshot" JSONB,
+    "revised_by" TEXT,
+    "revision_reason" TEXT,
+    "created_at" TIMESTAMP(3),
+
+    CONSTRAINT "plan_version_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "email_setting" (
+    "id" TEXT NOT NULL,
+    "mode" TEXT NOT NULL DEFAULT 'DEMO',
+    "sender_name" TEXT,
+    "sender_email" TEXT,
+    "restrict_to_approved" BOOLEAN NOT NULL DEFAULT true,
+    "redirect_all_to" TEXT,
+    "approved_addresses" JSONB,
+    "last_run_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "organization_id" TEXT,
+
+    CONSTRAINT "email_setting_pkey" PRIMARY KEY ("id")
 );
 
 -- AddForeignKey
@@ -896,6 +1281,9 @@ ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_engagement_fieldwor_fkey" FOREIGN KEY ("engagement_fieldwork_document_id") REFERENCES "engagement_fieldwork_document"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_source_risk_id_fkey" FOREIGN KEY ("source_risk_id") REFERENCES "risk_assessment"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_prepared_by_engagem_fkey" FOREIGN KEY ("prepared_by_engagement_auditor_id") REFERENCES "engagement_auditor"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -903,6 +1291,12 @@ ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_
 
 -- AddForeignKey
 ALTER TABLE "engagement_finding_and_recommendations" ADD CONSTRAINT "engagement_finding_and_recommendations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "strategic_objective" ADD CONSTRAINT "strategic_objective_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "risk_rating_band" ADD CONSTRAINT "risk_rating_band_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "engagement_planning_document" ADD CONSTRAINT "engagement_planning_document_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1004,13 +1398,25 @@ ALTER TABLE "user" ADD CONSTRAINT "user_organization_id_fkey" FOREIGN KEY ("orga
 ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_linked_planned_engagement_id_fkey" FOREIGN KEY ("linked_planned_engagement_id") REFERENCES "planned_engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_risk_owner_id_fkey" FOREIGN KEY ("risk_owner_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_strategic_objective_id_fkey" FOREIGN KEY ("strategic_objective_id") REFERENCES "strategic_objective"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "risk_assessment" ADD CONSTRAINT "risk_assessment_assessed_by_id_fkey" FOREIGN KEY ("assessed_by_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "escalation_rule" ADD CONSTRAINT "escalation_rule_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_finding_id_fkey" FOREIGN KEY ("finding_id") REFERENCES "engagement_finding_and_recommendations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "corrective_action" ADD CONSTRAINT "corrective_action_supervisor_user_id_fkey" FOREIGN KEY ("supervisor_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "task" ADD CONSTRAINT "task_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -1025,8 +1431,29 @@ ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_user_id_fkey" FOREIGN KEY ("
 ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "task"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_timesheet_id_fkey" FOREIGN KEY ("timesheet_id") REFERENCES "timesheet"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "expense" ADD CONSTRAINT "expense_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "expense" ADD CONSTRAINT "expense_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "engagement_team_member" ADD CONSTRAINT "engagement_team_member_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "engagement_team_member" ADD CONSTRAINT "engagement_team_member_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "leave_request" ADD CONSTRAINT "leave_request_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "timesheet" ADD CONSTRAINT "timesheet_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "working_paper" ADD CONSTRAINT "working_paper_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

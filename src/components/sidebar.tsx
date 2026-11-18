@@ -26,6 +26,7 @@ const adminItems = [
   { href: "/admin/risk-bands", label: "Risk Rating Bands", icon: ShieldAlert },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: ScrollText },
   { href: "/admin/sent-emails", label: "Sent Emails", icon: Mail },
+  { href: "/admin/escalation-rules", label: "Escalation Rules", icon: Settings },
 ];
 
 const mainItems = [

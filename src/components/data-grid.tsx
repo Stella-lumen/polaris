@@ -433,7 +433,20 @@ export function DataGrid({
   const router = useRouter();
   const go = (id: string) => hrefPattern && router.push(hrefPattern.replace("{id}", id));
   const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0) + (rowActions?.includes("toplan") ? 1 : 0) + (rowActions?.includes("expire") ? 1 : 0);
-  const actionWidth = rowActions?.includes("expire") ? 150 : rowActions?.includes("toplan") ? 130 : rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
+  // Single-action columns keep their tuned widths; combos add per-action
+  // footprints so edit + toggle + delete can't overflow into the next column.
+  const SINGLE: Record<string, number> = {
+    expire: 150, toplan: 130, workflow: 200, signoff: 140, toggle: 110,
+  };
+  const actionWidth = rowActions?.length === 1 && SINGLE[rowActions[0]]
+    ? SINGLE[rowActions[0]]
+    : Math.max(56, (rowActions ?? []).reduce((w, a) => {
+        const per: Record<string, number> = {
+          edit: 32, files: 32, delete: 32,
+          toggle: 88, expire: 96, toplan: 110, signoff: 130, workflow: 180,
+        };
+        return w + (per[a] ?? 32) + 8;
+      }, 8));
   const cols: ColDef[] = [
     ...(rowActions?.length
       ? [{

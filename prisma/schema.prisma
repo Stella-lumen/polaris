@@ -330,6 +330,9 @@ model Engagement {
   engagementPlanningDocuments_engagement   EngagementPlanningDocument[] @relation("engagement")
   engagementReportDocuments_engagement   EngagementReportDocument[] @relation("engagement")
   reviewNotes_engagement   ReviewNote[] @relation("engagement")
+  planned_hours Decimal?
+  planned_expense_budget Decimal?
+  teamMembers_engagement   EngagementTeamMember[] @relation("team_members")
   tasks_engagement   Task[] @relation("tasks")
   timeEntries_engagement   TimeEntry[] @relation("time_entries")
   expenses_engagement   Expense[] @relation("expenses")
@@ -784,6 +787,9 @@ model User {
   tasks_assignee   Task[] @relation("task_assignee")
   timeEntries_user   TimeEntry[] @relation("time_entries")
   expenses_user   Expense[] @relation("expenses")
+  teamAssignments_user   EngagementTeamMember[] @relation("team_assignments")
+  leaveRequests_user   LeaveRequest[] @relation("leave_requests")
+  timesheets_user   Timesheet[] @relation("timesheets")
   @@map("user")
 }
 
@@ -926,6 +932,7 @@ model Task {
   updated_at DateTime?
   deleted_by String?
   deleted_at DateTime?
+  timeEntries_task   TimeEntry[] @relation("task_time_entries")
   @@map("task")
 }
 
@@ -938,6 +945,12 @@ model TimeEntry {
   work_date DateTime?
   hours Decimal?
   description String?
+  activity_type String?   // PLANNING|FIELDWORK|REPORTING|FOLLOW_UP|TRAINING|ADMIN|LEAVE
+  status String?   // DRAFT|SUBMITTED|APPROVED|RETURNED
+  r_task   Task? @relation("task_time_entries", fields: [task_id], references: [id])
+  task_id   String?
+  r_timesheet   Timesheet? @relation("entry_timesheet", fields: [timesheet_id], references: [id])
+  timesheet_id   String?
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
@@ -959,6 +972,12 @@ model Expense {
   description String?
   amount Decimal?
   expense_date DateTime?
+  category String?   // TRAVEL|ACCOMMODATION|SUBSISTENCE|OTHER
+  status String?   // CLAIMED|APPROVED|REJECTED|PAID
+  receipt_file_id String?
+  approved_by String?
+  approved_date DateTime?
+  rejection_reason String?
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
@@ -969,4 +988,88 @@ model Expense {
   deleted_by String?
   deleted_at DateTime?
   @@map("expense")
+}
+
+// ---------- resource allocation & scheduling ----------
+
+model EngagementTeamMember {
+  id String   @id @default(ulid())
+  r_engagement   Engagement? @relation("team_members", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  r_user   User? @relation("team_assignments", fields: [user_id], references: [id])
+  user_id   String?
+  role String?   // LEAD|AUDITOR|REVIEWER
+  planned_hours Decimal?
+  start_date DateTime?
+  end_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("engagement_team_member")
+}
+
+model LeaveRequest {
+  id String   @id @default(ulid())
+  r_user   User? @relation("leave_requests", fields: [user_id], references: [id])
+  user_id   String?
+  leave_type String?   // ANNUAL|SICK|TRAINING|PUBLIC_HOLIDAY|OTHER
+  start_date DateTime?
+  end_date DateTime?
+  status String?   // REQUESTED|APPROVED|REJECTED
+  reason String?
+  approved_by String?
+  approved_date DateTime?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("leave_request")
+}
+
+model PublicHoliday {
+  id String   @id @default(ulid())
+  holiday_date DateTime?
+  name String?
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_at DateTime?
+  @@map("public_holiday")
+}
+
+model Timesheet {
+  id String   @id @default(ulid())
+  r_user   User? @relation("timesheets", fields: [user_id], references: [id])
+  user_id   String?
+  week_start DateTime?
+  status String?   // DRAFT|SUBMITTED|APPROVED|RETURNED
+  submitted_date DateTime?
+  approved_by String?
+  approved_date DateTime?
+  comment String?
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_at DateTime?
+  time_entries   TimeEntry[] @relation("entry_timesheet")
+  @@map("timesheet")
+}
+
+model ResourceSetting {
+  id String   @id @default(ulid())
+  setting_key String?
+  setting_value String?
+  organization_id   String?
+  @@map("resource_setting")
 }

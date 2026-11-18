@@ -885,28 +885,49 @@ export async function createCorrectiveAction(formData: FormData) {
  * IMPLEMENTED is gated: progress must be 100 AND at least one evidence file
  * must be attached to the action in the document repository.
  */
+const CA_ORDER = ["OPEN", "IN_PROGRESS", "IMPLEMENTED", "VERIFIED"];
+
 export async function updateCorrectiveAction(id: string, formData: FormData) {
   const user = await requireUser();
   const status = str(formData.get("status"));
-  const progress = Number(formData.get("progress")) || 0;
   const current = await prisma.correctiveAction.findUnique({ where: { id } });
   if (!current) throw new Error("Action not found");
 
+  // Progress is only written when explicitly provided — a status-only
+  // update must never wipe it back to 0.
   const data: Record<string, unknown> = {
     updated_by: user.id,
-    status,
-    progress,
     management_comments: str(formData.get("management_comments")) ?? current.management_comments,
   };
-  if (status === "IMPLEMENTED") {
-    const evidence = await prisma.storedFile.count({ where: { entity_type: "corrective-action", entity_id: id, deleted: false } });
-    if (progress < 100 || evidence === 0) {
-      throw new Error(`Cannot mark IMPLEMENTED — requires 100% done (currently ${progress}%) and at least one evidence file (${evidence} attached).`);
+  if (formData.get("progress") != null && formData.get("progress") !== "") {
+    data.progress = Number(formData.get("progress"));
+  }
+
+  if (status) {
+    const from = CA_ORDER.indexOf(current.status ?? "OPEN");
+    const to = CA_ORDER.indexOf(status);
+    if (to > CA_ORDER.indexOf("IMPLEMENTED") && current.status !== "IMPLEMENTED") {
+      throw new Error("An action must be Implemented before it can be Verified");
     }
-    data.implemented_date = new Date();
+    if (status === "IMPLEMENTED") {
+      const evidence = await prisma.storedFile.count({ where: { entity_type: "corrective-action", entity_id: id, deleted: false } });
+      const prog = data.progress ?? current.progress ?? 0;
+      if (Number(prog) < 100 || evidence === 0) {
+        throw new Error(`Cannot mark Implemented — requires 100% done (currently ${prog}%) and at least one evidence file (${evidence} attached).`);
+      }
+      data.status = status;
+      data.progress = 100;
+      data.implemented_date = new Date();
+    } else if (status === "VERIFIED") {
+      throw new Error("Use Verify action — verification records outcome, verifier and comments");
+    } else if (to >= 0 && to > from) {
+      data.status = status;
+    } else if (to >= 0 && to < from) {
+      data.status = status; // reopen/rollback allowed (logged below)
+    }
   }
   const a = await prisma.correctiveAction.update({ where: { id }, data });
-  await logAudit("Corrective Actions", id, "UPDATE", { status: { old: current.status, new: status }, progress: { old: current.progress, new: progress } });
+  await logAudit("Corrective Actions", id, "UPDATE", { ...(data.status ? { status: { old: current.status, new: data.status } } : {}), ...(data.progress != null ? { progress: { old: current.progress, new: data.progress } } : {}) });
   revalidatePath("/follow-up");
   return a;
 }
@@ -921,7 +942,10 @@ export async function verifyCorrectiveAction(id: string, formData: FormData) {
   const a = await prisma.correctiveAction.findUnique({ where: { id } });
   if (!a) throw new Error("Action not found");
   if (a.owner_user_id === user.id) throw new Error("The action owner cannot verify their own action — segregation of duties");
-  if (a.status !== "IMPLEMENTED") throw new Error("Only IMPLEMENTED actions can be verified");
+  if (a.status !== "IMPLEMENTED") throw new Error("Only Implemented actions can be verified");
+  const evidence = await prisma.storedFile.count({ where: { entity_type: "corrective-action", entity_id: id, deleted: false } });
+  if (evidence === 0) throw new Error("Cannot verify — no evidence file is attached to this action");
+  if ((a.progress ?? 0) < 100) throw new Error(`Cannot verify — the action is ${a.progress ?? 0}% done, not 100%`);
 
   const outcome = str(formData.get("outcome")) ?? "EFFECTIVE";
   const comments = str(formData.get("verification_comments"));
@@ -968,6 +992,27 @@ export async function reviseDueDate(id: string, formData: FormData) {
   });
   await logAudit("Corrective Actions", id, "UPDATE", { due_date: { old: a.due_date, new: due }, reason });
   revalidatePath("/follow-up");
+}
+
+/** Evidence upload for a corrective action — goes into the document repository. */
+export async function uploadActionEvidence(id: string, formData: FormData) {
+  const user = await requireUser();
+  await saveFiles("corrective-action", id, formData);
+  await logAudit("Corrective Actions", id, "EVIDENCE", { uploaded_by: user.id, files: formData.getAll("files").map((f) => (f as File).name) });
+  revalidatePath(`/follow-up/${id}`);
+}
+
+/** Reopen a verified action (Internal Audit only) with a reason. */
+export async function reopenCorrectiveAction(id: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only Internal Audit (Admin/CAE) can reopen actions");
+  const reason = str(formData.get("reopened_reason")) ?? "Reopened by Internal Audit";
+  await prisma.correctiveAction.update({
+    where: { id },
+    data: { status: "OPEN", reopened_reason: reason, updated_by: user.id, updated_at: new Date() },
+  });
+  await logAudit("Corrective Actions", id, "UPDATE", { status: { old: "VERIFIED", new: "OPEN" }, reason });
+  revalidatePath(`/follow-up/${id}`);
 }
 
 /** Bulk/manual reminder — queues a sent_email to the owner + supervisor. */
@@ -1066,32 +1111,245 @@ export async function updateFindingStatus(id: string, status: string) {
 
 // ---------- resource allocation ----------
 export async function createTimeEntry(formData: FormData) {
+  const user = await requireUser();
+  const userId = str(formData.get("user_id")) ?? user.id;
+  const confirmed = str(formData.get("confirmed")) === "yes";
+  const workDate = date(formData.get("work_date"));
+  const hours = Number(formData.get("hours")) || 0;
+  if (!confirmed && workDate) {
+    const { timeEntryWarnings } = await import("@/lib/resource-logic");
+    const holidays = new Set((await prisma.publicHoliday.findMany({ where: { deleted: false } })).map((h) => h.holiday_date?.toISOString().slice(0, 10) ?? ""));
+    const warnings = timeEntryWarnings({ date: workDate, hours, holidays });
+    if (warnings.length) throw new Error("CONFIRM:" + warnings.join(" "));
+  }
   const t = await prisma.timeEntry.create({
     data: {
       ...(await scope()),
-      user_id: str(formData.get("user_id")),
+      user_id: userId,
       engagement_id: str(formData.get("engagement_id")),
-      work_date: date(formData.get("work_date")),
-      hours: Number(formData.get("hours")) || null,
+      work_date: workDate,
+      hours: hours || null,
       description: str(formData.get("description")),
+      activity_type: str(formData.get("activity_type")),
+      task_id: str(formData.get("task_id")),
+      status: "DRAFT",
     },
   });
   await logAudit("Time Entries", t.id, "INSERT", t);
   revalidatePath("/resources");
 }
 
+export async function updateTimeEntry(id: string, formData: FormData) {
+  const user = await requireUser();
+  const t = await prisma.timeEntry.findUnique({ where: { id } });
+  if (!t) throw new Error("Time entry not found");
+  if (t.user_id !== user.id && !canAuthorise(user)) throw new Error("You can only change your own time entries");
+  if (t.status === "APPROVED") throw new Error("This time entry is approved and locked — ask your supervisor to reopen the timesheet first");
+  const data = {
+    work_date: date(formData.get("work_date")) ?? t.work_date,
+    hours: formData.get("hours") ? Number(formData.get("hours")) : t.hours,
+    description: str(formData.get("description")) ?? t.description,
+    activity_type: str(formData.get("activity_type")) ?? t.activity_type,
+    updated_by: user.id,
+    updated_at: new Date(),
+  };
+  await prisma.timeEntry.update({ where: { id }, data });
+  await logAudit("Time Entries", id, "UPDATE", { old: { hours: t.hours, description: t.description, work_date: t.work_date }, new: data });
+  revalidatePath("/resources");
+}
+
+export async function deleteTimeEntry(id: string) {
+  const user = await requireUser();
+  const t = await prisma.timeEntry.findUnique({ where: { id } });
+  if (!t) throw new Error("Time entry not found");
+  if (t.user_id !== user.id && !canAuthorise(user)) throw new Error("You can only remove your own time entries");
+  if (t.status === "APPROVED") throw new Error("This time entry is approved and locked — ask your supervisor to reopen the timesheet first");
+  await prisma.timeEntry.update({ where: { id }, data: { deleted: true, deleted_by: user.id, deleted_at: new Date() } });
+  await logAudit("Time Entries", id, "DELETE", t);
+  revalidatePath("/resources");
+}
+
+/** Submit a week of the caller's draft entries for approval. */
+export async function submitTimesheet(weekStartIso: string) {
+  const user = await requireUser();
+  const ws = new Date(weekStartIso);
+  let ts = await prisma.timesheet.findFirst({ where: { user_id: user.id, week_start: ws, deleted: false } });
+  if (ts?.status === "APPROVED") throw new Error("This timesheet is already approved");
+  if (!ts) ts = await prisma.timesheet.create({ data: { user_id: user.id, week_start: ws, organization_id: user.organization_id, created_by: user.id } });
+  const we = new Date(ws); we.setDate(we.getDate() + 7);
+  const n = await prisma.timeEntry.updateMany({
+    where: { user_id: user.id, deleted: false, status: { in: ["DRAFT", "RETURNED"] }, work_date: { gte: ws, lt: we } },
+    data: { timesheet_id: ts.id, status: "SUBMITTED", updated_by: user.id, updated_at: new Date() },
+  });
+  await prisma.timesheet.update({ where: { id: ts.id }, data: { status: "SUBMITTED", submitted_date: new Date() } });
+  await logAudit("Timesheets", ts.id, "SUBMIT", { week_start: weekStartIso, entries: n.count });
+  revalidatePath("/resources");
+}
+
+export async function approveTimesheet(id: string, approve: boolean, comment?: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve timesheets");
+  const ts = await prisma.timesheet.findUnique({ where: { id } });
+  if (!ts) throw new Error("Timesheet not found");
+  if (ts.user_id === user.id) throw new Error("You cannot approve your own timesheet");
+  const status = approve ? "APPROVED" : "RETURNED";
+  await prisma.timesheet.update({ where: { id }, data: { status, approved_by: user.id, approved_date: new Date(), comment: comment ?? null } });
+  await prisma.timeEntry.updateMany({ where: { timesheet_id: id }, data: { status, updated_by: user.id, updated_at: new Date() } });
+  await logAudit("Timesheets", id, approve ? "APPROVE" : "RETURN", { by: user.id, comment });
+  revalidatePath("/resources");
+}
+
+export async function approveTimesheetForm(id: string) { await approveTimesheet(id, true); }
+export async function approveExpenseForm(id: string) { await approveExpense(id, true); }
+export async function approveLeaveForm(id: string) { await approveLeave(id, true); }
+export async function rejectLeaveForm(id: string) { await approveLeave(id, false); }
+
+export async function returnTimesheet(id: string, formData: FormData) {
+  await approveTimesheet(id, false, str(formData.get("comment")) ?? undefined);
+}
+
+export async function rejectExpense(id: string, formData: FormData) {
+  await approveExpense(id, false, str(formData.get("reason")) ?? undefined);
+}
+
+/** Supervisor reopens an approved timesheet with a reason. */
+export async function reopenTimesheet(id: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can reopen a timesheet");
+  const reason = str(formData.get("reason")) ?? "Reopened by supervisor";
+  await prisma.timesheet.update({ where: { id }, data: { status: "RETURNED", comment: reason } });
+  await prisma.timeEntry.updateMany({ where: { timesheet_id: id }, data: { status: "RETURNED" } });
+  await logAudit("Timesheets", id, "REOPEN", { by: user.id, reason });
+  revalidatePath("/resources");
+}
+
 export async function createExpense(formData: FormData) {
+  const user = await requireUser();
+  const amount = Number(formData.get("amount")) || 0;
+  const limitRow = await prisma.resourceSetting.findFirst({ where: { setting_key: "receipt_limit" } });
+  const limit = Number(limitRow?.setting_value ?? 500);
+  await saveFiles("expense_receipt", "pending", formData); // no-op unless files present
+  const receiptCount = formData.getAll("files").filter((f) => f instanceof File && f.size > 0).length;
+  if (amount > limit && receiptCount === 0) {
+    throw new Error(`A receipt is required for amounts over ${fmtR(limit)} — this claim is ${fmtR(amount)}`);
+  }
   const e = await prisma.expense.create({
     data: {
       ...(await scope()),
       engagement_id: str(formData.get("engagement_id")),
-      user_id: str(formData.get("user_id")),
+      user_id: str(formData.get("user_id")) ?? user.id,
       description: str(formData.get("description")),
-      amount: Number(formData.get("amount")) || null,
+      amount: amount || null,
       expense_date: date(formData.get("expense_date")),
+      category: str(formData.get("category")),
+      status: "CLAIMED",
     },
   });
+  const files = formData.getAll("files");
+  if (files.length) {
+    for (const f of files) {
+      if (f instanceof File && f.size > 0) {
+        const sf = await prisma.storedFile.create({
+          data: { ...(await scope()), name: f.name, mime_type: f.type || null, size: f.size, data: Buffer.from(await f.arrayBuffer()), entity_type: "expense", entity_id: e.id },
+        });
+        await prisma.expense.update({ where: { id: e.id }, data: { receipt_file_id: sf.id } });
+      }
+    }
+  }
   await logAudit("Expenses", e.id, "INSERT", e);
+  revalidatePath("/resources");
+}
+
+const fmtR = (n: number) => "R " + n.toLocaleString("en-ZA", { minimumFractionDigits: 2 }).replace(/,/g, " ");
+
+export async function approveExpense(id: string, approve: boolean, reason?: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve expense claims");
+  const e = await prisma.expense.findUnique({ where: { id } });
+  if (!e) throw new Error("Expense not found");
+  if (e.user_id === user.id) throw new Error("You cannot approve your own expense claim");
+  await prisma.expense.update({
+    where: { id },
+    data: { status: approve ? "APPROVED" : "REJECTED", approved_by: user.id, approved_date: new Date(), rejection_reason: approve ? null : reason ?? "Rejected", updated_by: user.id },
+  });
+  await logAudit("Expenses", id, approve ? "APPROVE" : "REJECT", { by: user.id, reason });
+  revalidatePath("/resources");
+}
+
+export async function markExpensePaid(id: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can mark expenses as paid");
+  await prisma.expense.update({ where: { id }, data: { status: "PAID", updated_by: user.id } });
+  await logAudit("Expenses", id, "PAID", { by: user.id });
+  revalidatePath("/resources");
+}
+
+// ---------- team allocation, leave, budgets ----------
+export async function addTeamMember(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can change the engagement team");
+  const m = await prisma.engagementTeamMember.create({
+    data: {
+      ...(await scope()),
+      engagement_id: engagementId,
+      user_id: str(formData.get("user_id")),
+      role: str(formData.get("role")),
+      planned_hours: Number(formData.get("planned_hours")) || null,
+      start_date: date(formData.get("start_date")),
+      end_date: date(formData.get("end_date")),
+    },
+  });
+  await logAudit("Engagement Team", m.id, "INSERT", m);
+  revalidatePath(`/engagements/${engagementId}/dashboard`);
+  revalidatePath("/resources");
+}
+
+export async function removeTeamMember(id: string, engagementId: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can change the engagement team");
+  await prisma.engagementTeamMember.update({ where: { id }, data: { deleted: true, deleted_by: user.id, deleted_at: new Date() } });
+  await logAudit("Engagement Team", id, "DELETE", {});
+  revalidatePath(`/engagements/${engagementId}/dashboard`);
+  revalidatePath("/resources");
+}
+
+export async function setEngagementBudget(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can set the budget");
+  await prisma.engagement.update({
+    where: { id: engagementId },
+    data: { planned_hours: Number(formData.get("planned_hours")) || null, planned_expense_budget: Number(formData.get("planned_expense_budget")) || null, updated_by: user.id },
+  });
+  await logAudit("Engagements", engagementId, "UPDATE", { planned_hours: formData.get("planned_hours"), planned_expense_budget: formData.get("planned_expense_budget") });
+  revalidatePath(`/engagements/${engagementId}/dashboard`);
+  revalidatePath("/resources");
+}
+
+export async function requestLeave(formData: FormData) {
+  const user = await requireUser();
+  const l = await prisma.leaveRequest.create({
+    data: {
+      ...(await scope()),
+      user_id: user.id,
+      leave_type: str(formData.get("leave_type")),
+      start_date: date(formData.get("start_date")),
+      end_date: date(formData.get("end_date")),
+      status: "REQUESTED",
+      reason: str(formData.get("reason")),
+    },
+  });
+  await logAudit("Leave", l.id, "INSERT", l);
+  revalidatePath("/resources");
+}
+
+export async function approveLeave(id: string, approve: boolean) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve leave");
+  const l = await prisma.leaveRequest.findUnique({ where: { id } });
+  if (!l) throw new Error("Leave request not found");
+  if (l.user_id === user.id) throw new Error("You cannot approve your own leave request");
+  await prisma.leaveRequest.update({ where: { id }, data: { status: approve ? "APPROVED" : "REJECTED", approved_by: user.id, approved_date: new Date() } });
+  await logAudit("Leave", id, approve ? "APPROVE" : "REJECT", { by: user.id });
   revalidatePath("/resources");
 }
 

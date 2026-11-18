@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { SquarePen } from "lucide-react";
+import { CreateDialog } from "@/components/create-dialog";
+import { addTeamMember, removeTeamMember, setEngagementBudget } from "@/lib/actions";
 
 export const instant = false;
 
@@ -40,14 +42,23 @@ export default async function EngagementDashboardPage({
   if (!engagement) notFound();
 
   const where = { engagement_id, deleted: false };
-  const [declarations, planningDocs, programItems, fieldworkDocs, reportDocs] = await Promise.all([
+  const [declarations, planningDocs, programItems, fieldworkDocs, reportDocs, team, users, timeUsed, expUsed] = await Promise.all([
     prisma.engagementAuditorDeclaration.findMany({ where, select: { authorised_date: true } }),
     prisma.engagementPlanningDocument.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
     prisma.engagementAuditProgramItem.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
     prisma.engagementFieldworkDocument.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
     prisma.engagementReportDocument.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
+    prisma.engagementTeamMember.findMany({ where, include: { r_user: true } }),
+    prisma.user.findMany({ where: { deleted: false, disabled: false } }),
+    prisma.timeEntry.aggregate({ where, _sum: { hours: true } }),
+    prisma.expense.aggregate({ where, _sum: { amount: true } }),
   ]);
   const stageItems = [declarations, planningDocs, programItems, fieldworkDocs, reportDocs];
+  const usedHours = Number(timeUsed._sum.hours ?? 0);
+  const usedExp = Number(expUsed._sum.amount ?? 0);
+  const plannedH = Number(engagement.planned_hours ?? 0);
+  const pct = plannedH > 0 ? Math.round((usedHours / plannedH) * 100) : null;
+  const ROLE_L: Record<string, string> = { LEAD: "Lead auditor", AUDITOR: "Auditor", REVIEWER: "Reviewer" };
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,6 +98,41 @@ export default async function EngagementDashboardPage({
             </Link>
           );
         })}
+      </div>
+
+      <div className="w-full max-w-3xl rounded-md border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-medium">Team and budget</h3>
+          <div className="flex gap-2">
+            <CreateDialog title="Set budget" buttonLabel="Set budget" action={setEngagementBudget.bind(null, engagement_id)}
+              fields={[
+                { name: "planned_hours", label: `Planned hours${engagement.planned_hours ? ` (currently ${engagement.planned_hours})` : ""}`, type: "number" },
+                { name: "planned_expense_budget", label: `Planned expenses in Rand${engagement.planned_expense_budget ? ` (currently R ${engagement.planned_expense_budget})` : ""}`, type: "number" },
+              ]} />
+            <CreateDialog title="Add team member" buttonLabel="Add team member" action={addTeamMember.bind(null, engagement_id)}
+              fields={[
+                { name: "user_id", label: "Auditor", type: "select", required: true, options: users.map((u) => ({ value: u.id, label: `${u.first_name} ${u.last_name}` })) },
+                { name: "role", label: "Role", type: "select", required: true, options: [{ value: "LEAD", label: "Lead auditor" }, { value: "AUDITOR", label: "Auditor" }, { value: "REVIEWER", label: "Reviewer" }] },
+                { name: "planned_hours", label: "Planned hours", type: "number" },
+                { name: "start_date", label: "Start", type: "date" },
+                { name: "end_date", label: "End", type: "date" },
+              ]} />
+          </div>
+        </div>
+        <div className="mb-3 text-sm">
+          Hours used: <strong>{usedHours}</strong>{plannedH ? ` of ${plannedH} planned (${pct}%)` : ""} · Expenses: <strong>R {usedExp.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</strong>
+          {pct != null && pct >= 80 && <span className={`ml-2 rounded px-2 py-0.5 text-xs ${pct >= 100 ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800"}`}>This engagement has used {pct}% of its planned hours.</span>}
+        </div>
+        {team.length ? (
+          <ul className="flex flex-col gap-1 text-sm">
+            {team.map((m) => (
+              <li key={m.id} className="flex items-center justify-between rounded border px-2 py-1.5">
+                <span>{m.r_user ? `${m.r_user.first_name} ${m.r_user.last_name}` : ""} — {ROLE_L[m.role ?? ""] ?? m.role}{m.planned_hours ? ` · ${m.planned_hours}h planned` : ""}{m.start_date ? ` · ${m.start_date.toISOString().slice(0, 10)}${m.end_date ? ` to ${m.end_date.toISOString().slice(0, 10)}` : ""}` : ""}</span>
+                <form action={removeTeamMember.bind(null, m.id, engagement_id)}><button className="text-xs text-red-600 hover:underline">Remove</button></form>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-sm text-muted-foreground">No team members allocated yet.</p>}
       </div>
     </div>
   );

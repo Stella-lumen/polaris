@@ -94,6 +94,14 @@ export default async function DashboardPage() {
   const openAG = allActions.filter((a) => a.source === "AG" && a.status !== "VERIFIED").length;
   const awaitingVerification = allActions.filter((a) => a.status === "IMPLEMENTED").length;
   const closureRate = allActions.length ? Math.round((allActions.filter((a) => a.status === "VERIFIED").length / allActions.length) * 100) : 0;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [engagementsRaw, timesheetsPending, expensesThisMonth, timeThisMonth] = await Promise.all([
+    prisma.engagement.findMany({ where: scope, include: { timeEntries_engagement: { where: { deleted: false }, select: { hours: true } } } }),
+    prisma.timesheet.findMany({ where: { deleted: false, status: "SUBMITTED" } }),
+    prisma.expense.findMany({ where: { deleted: false, expense_date: { gte: monthStart } } }),
+    prisma.timeEntry.aggregate({ where: { deleted: false, work_date: { gte: monthStart } }, _sum: { hours: true } }),
+  ]);
+  const hoursThisMonth = Number(timeThisMonth._sum.hours ?? 0);
 
   const cards = [
     { label: "Total Engagements", value: engagements.length, sub: `${rate}% completion rate`, icon: Briefcase, warn: false },
@@ -274,6 +282,41 @@ export default async function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Resource allocation widgets */}
+      {(() => {
+        const overBudget = engagementsRaw.filter((e) => {
+          const p = Number(e.planned_hours ?? 0);
+          const u = e.timeEntries_engagement.reduce((s, t) => s + Number(t.hours ?? 0), 0);
+          return p > 0 && u >= p;
+        }).length;
+        const pendingTs = timesheetsPending.length;
+        const monthExp = expensesThisMonth.reduce((s, e) => s + Number(e.amount ?? 0), 0);
+        return (
+          <div className="grid gap-4 md:grid-cols-4">
+            <a href="/resources" className="rounded-md border p-4 hover:bg-accent">
+              <div className="text-xs text-muted-foreground">Engagements over budget</div>
+              <div className={`text-2xl font-semibold ${overBudget ? "text-red-600" : ""}`}>{overBudget}</div>
+              <div className="text-xs text-muted-foreground">planned hours used up</div>
+            </a>
+            <a href="/resources" className="rounded-md border p-4 hover:bg-accent">
+              <div className="text-xs text-muted-foreground">Timesheets waiting</div>
+              <div className={`text-2xl font-semibold ${pendingTs ? "text-amber-600" : ""}`}>{pendingTs}</div>
+              <div className="text-xs text-muted-foreground">for approval</div>
+            </a>
+            <a href="/resources" className="rounded-md border p-4 hover:bg-accent">
+              <div className="text-xs text-muted-foreground">Expenses this month</div>
+              <div className="text-2xl font-semibold">R {monthExp.toLocaleString("en-ZA", { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-muted-foreground">{expensesThisMonth.length} claims</div>
+            </a>
+            <a href="/resources" className="rounded-md border p-4 hover:bg-accent">
+              <div className="text-xs text-muted-foreground">Hours logged this month</div>
+              <div className="text-2xl font-semibold">{hoursThisMonth}</div>
+              <div className="text-xs text-muted-foreground">across all engagements</div>
+            </a>
+          </div>
+        );
+      })()}
     </div>
   );
 }

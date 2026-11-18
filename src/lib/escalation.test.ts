@@ -61,3 +61,10 @@ describe("implemented-gate and segregation rules (mirror of action checks)", () 
     expect(isOverdue(new Date(Date.now() + 86400_000), "OPEN")).toBe(false);
   });
 });
+
+// --- VERIFIED actions can never escalate ---
+it("no escalation rule fires for VERIFIED actions", () => {
+  for (const trigger of ["DAYS_BEFORE_DUE", "ON_DUE_NOT_DONE", "DAYS_OVERDUE", "UNVERIFIED_DAYS"]) {
+    expect(ruleFires(trigger, 0, { status: "VERIFIED", daysToDue: -30, daysOverdue: 30, daysUnverified: 30 })).toBe(false);
+  }
+});

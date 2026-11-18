@@ -274,6 +274,9 @@ model EngagementAuditorDeclaration {
   reviewed_at    DateTime?
   signed_at      DateTime?
   declared_year  Int?
+  signature_image String?   // PNG data URL captured on the signature pad
+  signer_name     String?   // name typed by the signer at signing time
+  signer_designation String?
   r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
   engagement_id   String?
   r_engagement_auditor   EngagementAuditor? @relation("engagement_auditor", fields: [engagement_auditor_id], references: [id])

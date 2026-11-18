@@ -54,10 +54,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ engagement_id: 
     const section = r.r_declaration?.r_declaration_section?.custom_name ?? r.r_declaration?.r_declaration_section?.name ?? "";
     const wording = r.signed_text ?? r.r_declaration?.custom_text ?? r.r_declaration?.declaration_text ?? "";
     const reviewed = r.reviewed_by_user_id ? `Reviewed by ${reviewerName.get(r.reviewed_by_user_id) ?? "a supervisor"}${r.review_comment ? ` — “${esc(r.review_comment)}”` : ""}` : "";
+    const sigCell = r.signature_image
+      ? `<img src="${r.signature_image}" style="height:44px" /><br/><span style="color:#666">${esc(r.signer_name ?? "")}${r.signer_designation ? `, ${esc(r.signer_designation)}` : ""}</span>`
+      : `<span style="color:#999">Signed without a captured signature</span>`;
     return `<tr>
       <td>${esc(person)}</td><td>${esc(section)}</td><td>${esc(wording)}</td>
       <td>${STATUS_WORDS[r.status ?? "SIGNED"] ?? r.status}<br/><span style="color:#666">${esc(r.conflict_reason ? `Reason: ${r.conflict_reason}` : "")}</span><br/><span style="color:#666">${reviewed}</span></td>
-      <td>${fmt(r.signed_at ?? r.confirmation_date)}</td>
+      <td>${fmt(r.signed_at ?? r.confirmation_date)}</td><td>${sigCell}</td>
     </tr>`;
   }).join("");
 
@@ -72,7 +75,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ engagement_id: 
     <p style="color:#555">Each entry shows the exact wording as it stood when signed.</p>
     <button onclick="window.print()" style="padding:6px 14px;background:#f97316;color:#fff;border:0;border-radius:6px;cursor:pointer">Print or save as PDF</button>
     <table cellspacing="0" style="border-collapse:collapse;width:100%;margin-top:8px">
-      <tr><th>Person</th><th>Section</th><th>Declaration as signed</th><th>Status</th><th>When</th></tr>
+      <tr><th>Person</th><th>Section</th><th>Declaration as signed</th><th>Status</th><th>When</th><th>Signature</th></tr>
       ${trs}
     </table></body></html>`;
   return new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });

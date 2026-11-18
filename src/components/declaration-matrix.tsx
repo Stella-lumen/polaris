@@ -6,7 +6,7 @@ import {
   type ColDef, type ICellRendererParams, type RowClassParams,
 } from "ag-grid-community";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { signDeclaration, discloseDeclarationConflict, reviewDeclarationConflict } from "@/lib/actions";
 import { gridTheme } from "@/components/data-grid";
 import { CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react";
@@ -66,6 +66,7 @@ export function DeclarationMatrix({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [signFor, setSignFor] = useState<string | null>(null); // declId
   const [conflictFor, setConflictFor] = useState<string | null>(null); // declId
   const [reviewFor, setReviewFor] = useState<string | null>(null); // rowId
   const [error, setError] = useState<string | null>(null);
@@ -114,11 +115,11 @@ export function DeclarationMatrix({
           <>
             <button
               disabled={busy === `${a.id}|${data.declId}`}
-              onClick={(e) => { e.stopPropagation(); run(`${a.id}|${data.declId}`, () => signDeclaration(engagementId, data.declId!)); }}
+              onClick={(e) => { e.stopPropagation(); setSignFor(data.declId!); }}
               className="rounded bg-orange-600 px-2 py-1 text-xs font-medium text-white hover:bg-orange-500 disabled:opacity-50"
               title="Sign this declaration — the wording is kept exactly as shown"
             >
-              {busy === `${a.id}|${data.declId}` ? "…" : "Sign"}
+              Sign
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setConflictFor(data.declId!); }}
@@ -198,6 +199,21 @@ export function DeclarationMatrix({
         </section>
       )}
 
+      {signFor && (
+        <SignDialog
+          signerName={auditors.find((a) => a.id === myAuditorId)?.name ?? ""}
+          designation={auditors.find((a) => a.id === myAuditorId)?.position.toLowerCase().replaceAll("_", " ") ?? ""}
+          onClose={() => setSignFor(null)}
+          onSubmit={async (name, designation, signatureImage) => {
+            const fd = new FormData();
+            fd.set("signer_name", name);
+            fd.set("signer_designation", designation);
+            fd.set("signature_image", signatureImage);
+            await run(`sign-${signFor}`, () => signDeclaration(engagementId, signFor, fd));
+            setSignFor(null);
+          }}
+        />
+      )}
       {conflictFor && (
         <ConflictDialog
           onClose={() => setConflictFor(null)}
@@ -285,6 +301,113 @@ function ReviewDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (d
             className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50"
           >
             Approve with conditions
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignaturePad({ onChange }: { onChange: (hasInk: boolean, dataUrl: string | null) => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const dirty = useRef(false);
+
+  function ctx() {
+    const c = ref.current!;
+    const g = c.getContext("2d")!;
+    g.lineWidth = 2;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.strokeStyle = "#111";
+    return g;
+  }
+  function pos(e: React.PointerEvent) {
+    const r = ref.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function clear() {
+    const c = ref.current!;
+    c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    dirty.current = false;
+    onChange(false, null);
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Signature pad</span>
+        <button type="button" onClick={clear} className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-50">
+          Clear
+        </button>
+      </div>
+      <canvas
+        ref={ref}
+        width={560}
+        height={180}
+        className="w-full touch-none rounded-md border border-neutral-300 bg-white"
+        onPointerDown={(e) => {
+          drawing.current = true;
+          (e.target as HTMLCanvasElement).setPointerCapture(e.pointerId);
+          const g = ctx(); const p = pos(e);
+          g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x + 0.1, p.y + 0.1); g.stroke();
+          dirty.current = true;
+        }}
+        onPointerMove={(e) => {
+          if (!drawing.current) return;
+          const g = ctx(); const p = pos(e);
+          g.lineTo(p.x, p.y); g.stroke();
+        }}
+        onPointerUp={() => {
+          drawing.current = false;
+          onChange(dirty.current, dirty.current ? ref.current!.toDataURL("image/png") : null);
+        }}
+      />
+    </div>
+  );
+}
+
+function SignDialog({
+  signerName, designation, onClose, onSubmit,
+}: {
+  signerName: string;
+  designation: string;
+  onClose: () => void;
+  onSubmit: (name: string, designation: string, signatureImage: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(signerName);
+  const [role, setRole] = useState(designation);
+  const [sig, setSig] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const input = "w-full rounded border border-neutral-300 px-3 py-2 text-sm";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-xl rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-orange-600">Sign this declaration</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Your name, designation and signature are kept with the exact wording shown. This cannot be undone.
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Signer name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. T. Mkhize" className={input} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Designation</span>
+            <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Senior auditor" className={input} />
+          </label>
+        </div>
+        <div className="mt-3">
+          <SignaturePad onChange={(hasInk, dataUrl) => setSig(hasInk ? dataUrl : null)} />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-neutral-300 px-4 py-2 text-sm">Cancel</button>
+          <button
+            disabled={busy || !sig || !name.trim()}
+            title={!sig ? "Draw your signature first" : ""}
+            onClick={async () => { setBusy(true); await onSubmit(name, role, sig!); }}
+            className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 disabled:opacity-50"
+          >
+            {busy ? "Signing…" : "Sign"}
           </button>
         </div>
       </div>

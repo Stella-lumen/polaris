@@ -819,7 +819,7 @@ export async function ensureStageDocs(engagementId: string) {
 
 /** Sign a declaration — only the auditor themselves may sign, and the
  *  exact wording is snapshotted so later edits can't change what was signed. */
-export async function signDeclaration(engagementId: string, declarationId: string) {
+export async function signDeclaration(engagementId: string, declarationId: string, formData?: FormData) {
   const user = await requireUser();
   const aud = await prisma.engagementAuditor.findFirst({
     where: { engagement_id: engagementId, user_id: user.id, deleted: false },
@@ -827,6 +827,11 @@ export async function signDeclaration(engagementId: string, declarationId: strin
   if (!aud) throw new Error("Only a team member of this engagement can sign its declarations.");
   const decl = await prisma.declaration.findFirst({ where: { id: declarationId, deleted: false, disabled: false } });
   if (!decl) throw new Error("This declaration is not available for signing.");
+  const signatureImage = str(formData?.get("signature_image"));
+  const signerName = str(formData?.get("signer_name"));
+  const signerDesignation = str(formData?.get("signer_designation"));
+  if (formData && (!signatureImage || !signatureImage.startsWith("data:image/")))
+    throw new Error("Draw your signature in the signature pad before signing.");
   const text = decl.custom_text ?? decl.declaration_text ?? "";
   const b = await scope();
   const ex = await prisma.engagementAuditorDeclaration.findFirst({
@@ -835,6 +840,7 @@ export async function signDeclaration(engagementId: string, declarationId: strin
   const data = {
     confirmation_date: new Date(), signed_at: new Date(), signed_text: text,
     status: "SIGNED", declared_year: new Date().getFullYear(),
+    signature_image: signatureImage, signer_name: signerName, signer_designation: signerDesignation,
     conflict_reason: null, review_comment: null, updated_by: user.id, updated_at: new Date(),
   };
   if (ex) await prisma.engagementAuditorDeclaration.update({ where: { id: ex.id }, data });

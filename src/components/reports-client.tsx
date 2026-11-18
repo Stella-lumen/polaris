@@ -102,21 +102,16 @@ export function ReportsClient({ reports }: { reports: ReportDef[] }) {
             <ListFilter className="h-4 w-4" /> Report &amp; Filters
           </div>
           <div className="flex gap-2 text-xs">
-            <span className="rounded-full border px-3 py-1 text-neutral-500">Latest snapshot</span>
             <span className="rounded-full border px-3 py-1 text-neutral-500">{applied.user === "all" ? "All users" : applied.user}</span>
           </div>
         </div>
-        <div className="grid items-end gap-4 md:grid-cols-[1.4fr_1fr_1fr_1.2fr_auto]">
+        <div className="grid items-end gap-4 md:grid-cols-[1.4fr_1fr_1.2fr_auto]">
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Report</span>
             <select className={sel} value={reportId} onChange={(e) => { setReportId(e.target.value); setUser("all"); setSearch(""); }}>
               {reports.map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
             </select>
             <span className="text-xs text-neutral-500">{pending?.description}</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Snapshot</span>
-            <select className={sel}><option>Latest snapshot</option></select>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">User</span>

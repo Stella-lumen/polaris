@@ -2,6 +2,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
+import { escalateOverdueWork } from "@/lib/escalation";
 import { Briefcase, CheckCircle2, FileWarning, TriangleAlert, BellRing } from "lucide-react";
 import {
   EngagementStatusDonut, FindingsStatusDonut, EngagementsByTypeBar,
@@ -70,6 +71,9 @@ export default async function DashboardPage() {
 
   const rate = engagements.length ? Math.round((completed.length / engagements.length) * 100) : 0;
 
+  // Queue supervisor notifications for overdue/near-due work (idempotent per item per day)
+  const escalation = await escalateOverdueWork();
+
   const cards = [
     { label: "Total Engagements", value: engagements.length, sub: `${rate}% completion rate`, icon: Briefcase, warn: false },
     { label: "Completed", value: completed.length, sub: `${inProgress.length} in progress`, icon: CheckCircle2, warn: false },
@@ -125,6 +129,11 @@ export default async function DashboardPage() {
         </div>
         <div className="mb-3 text-xs text-muted-foreground">
           Automated alerts for overdue tasks and corrective actions nearing their deadline
+          {escalation.total > 0 && (
+            <span className="ml-1 text-orange-600">
+              — {escalation.queued > 0 ? `${escalation.queued} new notification${escalation.queued === 1 ? "" : "s"} queued to supervisors today` : "supervisors already notified today"}
+            </span>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           {tasks.map((t) => {

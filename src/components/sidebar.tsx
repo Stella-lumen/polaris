@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, FolderCog, CalendarRange, FileCheck2,
   UserRoundCheck, ScrollText, ClipboardList, BookOpen, FileText,
   Briefcase, ChevronDown, SunMoon, PanelLeft, Settings, LogOut,
-  ShieldAlert, ListTodo, RefreshCcw, Clock, BarChart3, KeyRound, Building2,
+  ShieldAlert, ListTodo, RefreshCcw, Clock, BarChart3, KeyRound, Building2, Mail,
 } from "lucide-react";
 
 const adminItems = [
@@ -22,6 +22,7 @@ const adminItems = [
   { href: "/admin/api-keys", label: "API Keys", icon: KeyRound },
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: ScrollText },
+  { href: "/admin/sent-emails", label: "Sent Emails", icon: Mail },
 ];
 
 const mainItems = [

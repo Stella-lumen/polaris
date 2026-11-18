@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { aiEnabled, aiConfig, chatCompletion } from "@/lib/ai";
+import { getSessionUser } from "@/lib/auth";
 
 export const instant = false;
 
 export async function POST() {
+  if (!(await getSessionUser())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   if (!aiEnabled()) {
     return NextResponse.json(
       { error: "AI not configured — set AI_API_KEY/AI_BASE_URL/AI_MODEL in .env" },

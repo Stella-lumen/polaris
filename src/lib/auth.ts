@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
@@ -7,10 +7,20 @@ import { prisma } from "@/lib/db";
 
 const COOKIE = "polaris_session";
 const TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
-const SECRET = process.env.AUTH_SECRET || "polaris-dev-secret-change-in-prod";
+
+// Fail closed in production; dev uses an ephemeral secret (sessions die on restart)
+// unless AUTH_SECRET is set in .env
+let devSecret: string | null = null;
+function secret() {
+  if (process.env.AUTH_SECRET) return process.env.AUTH_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET environment variable is required in production");
+  }
+  return (devSecret ??= randomBytes(32).toString("base64url"));
+}
 
 function sign(payload: string) {
-  return createHmac("sha256", SECRET).update(payload).digest("base64url");
+  return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
 export function hashPassword(pw: string) {
@@ -27,6 +37,7 @@ export async function createSession(userId: string) {
   jar.set(COOKIE, `${Buffer.from(payload).toString("base64url")}.${sign(payload)}`, {
     httpOnly: true,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: TTL_MS / 1000,
   });

@@ -32,6 +32,7 @@ const str = (v: unknown) => String(v ?? "").trim() || null;
 const date = (v: unknown) => (v ? new Date(String(v)) : null);
 
 export async function importEngagements(rows: Record<string, unknown>[]) {
+  await requireRole(["org:admin", "org:chief_audit_executive"]);
   const types = await prisma.engagementType.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID } });
   const typeByName = new Map(types.map((t) => [t.name?.toLowerCase(), t.id]));
   let created = 0;
@@ -328,6 +329,7 @@ export async function addDelegatedPreparer(formData: FormData) {
 }
 
 export async function createGuidingDocument(formData: FormData) {
+  await requireRole(["org:admin", "org:chief_audit_executive"]);
   const g = await prisma.guidingDocument.create({
     data: { ...(await scope()), name: str(formData.get("name")), description: str(formData.get("description")), files: fileMeta(formData) },
   });
@@ -343,6 +345,7 @@ const fileMeta = (formData: FormData) =>
     .map((f) => ({ name: f.name, size: f.size, type: f.type }));
 
 export async function createPlanningTemplate(formData: FormData) {
+  await requireRole(["org:admin", "org:chief_audit_executive"]);
   const t = await prisma.planningDocumentTemplate.create({
     data: {
       ...(await scope()),
@@ -358,6 +361,7 @@ export async function createPlanningTemplate(formData: FormData) {
 }
 
 export async function createReportTemplate(formData: FormData) {
+  await requireRole(["org:admin", "org:chief_audit_executive"]);
   const t = await prisma.reportDocumentTemplate.create({
     data: {
       ...(await scope()),
@@ -375,8 +379,10 @@ export async function createReportTemplate(formData: FormData) {
 // ---------- file storage ----------
 async function saveFiles(entityType: string, entityId: string, formData: FormData) {
   const b = await scope();
+  const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file
   for (const f of formData.getAll("files")) {
     if (f instanceof File && f.size > 0) {
+      if (f.size > MAX_FILE_BYTES) throw new Error(`File "${f.name}" exceeds the 25 MB limit`);
       await prisma.storedFile.create({
         data: { ...b, name: f.name, mime_type: f.type || null, size: f.size, data: Buffer.from(await f.arrayBuffer()), entity_type: entityType, entity_id: entityId },
       });
@@ -617,6 +623,7 @@ export async function advanceReviewNote(engagementId: string, noteId: string, st
 }
 
 export async function createDeclarationAssignment(engagementId: string, formData: FormData) {
+  await requireRole(["org:admin", "org:chief_audit_executive"]);
   const b = await scope();
   const d = await prisma.engagementAuditorDeclaration.create({
     data: {

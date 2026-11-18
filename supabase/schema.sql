@@ -16,6 +16,7 @@
 
 create extension if not exists pgcrypto;
 
+-- CreateSchema
 
 -- CreateTable
 CREATE TABLE "annual_audit_plan_period" (
@@ -1127,3 +1128,117 @@ create trigger trg_expense_updated before update on "expense" for each row execu
 -- alter table "task" enable row level security;
 -- alter table "time_entry" enable row level security;
 -- alter table "expense" enable row level security;
+
+-- =====================================================================
+-- INDEXES
+-- Postgres does NOT auto-index foreign key columns. Without these, joins
+-- and ON DELETE checks do full table scans as data grows.
+-- =====================================================================
+
+-- Uniqueness (login identity + API key lookup)
+create unique index if not exists "user_email_lower_key" on "user" (lower("email")) where "email" is not null;
+create unique index if not exists "api_key_key_hash_key" on "api_key" ("key_hash") where "key_hash" is not null;
+
+-- One index per foreign key column
+create index if not exists "annual_audit_plan_authorised_by_id_idx" on "annual_audit_plan" ("authorised_by_id");
+create index if not exists "annual_audit_plan_organization_id_idx" on "annual_audit_plan" ("organization_id");
+create index if not exists "annual_audit_plan_period_id_idx" on "annual_audit_plan" ("period_id");
+create index if not exists "annual_audit_plan_prepared_by_id_idx" on "annual_audit_plan" ("prepared_by_id");
+create index if not exists "annual_audit_plan_period_organization_id_idx" on "annual_audit_plan_period" ("organization_id");
+create index if not exists "api_key_organization_id_idx" on "api_key" ("organization_id");
+create index if not exists "audit_log_organization_id_idx" on "audit_log" ("organization_id");
+create index if not exists "audit_log_user_id_idx" on "audit_log" ("user_id");
+create index if not exists "audit_program_item_review_note_engagement_audit_program_item_id_idx" on "audit_program_item_review_note" ("engagement_audit_program_item_id");
+create index if not exists "audit_program_item_review_note_organization_id_idx" on "audit_program_item_review_note" ("organization_id");
+create index if not exists "audit_program_item_review_note_review_note_id_idx" on "audit_program_item_review_note" ("review_note_id");
+create index if not exists "corrective_action_finding_id_idx" on "corrective_action" ("finding_id");
+create index if not exists "corrective_action_owner_user_id_idx" on "corrective_action" ("owner_user_id");
+create index if not exists "declaration_declaration_section_id_idx" on "declaration" ("declaration_section_id");
+create index if not exists "declaration_organization_id_idx" on "declaration" ("organization_id");
+create index if not exists "declaration_section_organization_id_idx" on "declaration_section" ("organization_id");
+create index if not exists "engagement_annual_audit_plan_id_idx" on "engagement" ("annual_audit_plan_id");
+create index if not exists "engagement_authorised_by_id_idx" on "engagement" ("authorised_by_id");
+create index if not exists "engagement_engagement_type_id_idx" on "engagement" ("engagement_type_id");
+create index if not exists "engagement_organization_id_idx" on "engagement" ("organization_id");
+create index if not exists "engagement_planned_engagement_id_idx" on "engagement" ("planned_engagement_id");
+create index if not exists "engagement_prepared_by_id_idx" on "engagement" ("prepared_by_id");
+create index if not exists "engagement_audit_program_item_authorised_by_engagement_auditor_id_idx" on "engagement_audit_program_item" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_audit_program_item_engagement_id_idx" on "engagement_audit_program_item" ("engagement_id");
+create index if not exists "engagement_audit_program_item_nominated_reviewer_id_idx" on "engagement_audit_program_item" ("nominated_reviewer_id");
+create index if not exists "engagement_audit_program_item_organization_id_idx" on "engagement_audit_program_item" ("organization_id");
+create index if not exists "engagement_audit_program_item_prepared_by_engagement_auditor_id_idx" on "engagement_audit_program_item" ("prepared_by_engagement_auditor_id");
+create index if not exists "engagement_auditor_engagement_id_idx" on "engagement_auditor" ("engagement_id");
+create index if not exists "engagement_auditor_organization_id_idx" on "engagement_auditor" ("organization_id");
+create index if not exists "engagement_auditor_user_id_idx" on "engagement_auditor" ("user_id");
+create index if not exists "engagement_auditor_declaration_authorised_by_engagement_auditor_id_idx" on "engagement_auditor_declaration" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_auditor_declaration_declaration_id_idx" on "engagement_auditor_declaration" ("declaration_id");
+create index if not exists "engagement_auditor_declaration_engagement_auditor_id_idx" on "engagement_auditor_declaration" ("engagement_auditor_id");
+create index if not exists "engagement_auditor_declaration_engagement_id_idx" on "engagement_auditor_declaration" ("engagement_id");
+create index if not exists "engagement_auditor_declaration_organization_id_idx" on "engagement_auditor_declaration" ("organization_id");
+create index if not exists "engagement_fieldwork_document_authorised_by_engagement_auditor_id_idx" on "engagement_fieldwork_document" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_fieldwork_document_engagement_audit_program_item_id_idx" on "engagement_fieldwork_document" ("engagement_audit_program_item_id");
+create index if not exists "engagement_fieldwork_document_engagement_id_idx" on "engagement_fieldwork_document" ("engagement_id");
+create index if not exists "engagement_fieldwork_document_nominated_reviewer_id_idx" on "engagement_fieldwork_document" ("nominated_reviewer_id");
+create index if not exists "engagement_fieldwork_document_organization_id_idx" on "engagement_fieldwork_document" ("organization_id");
+create index if not exists "engagement_fieldwork_document_prepared_by_engagement_auditor_id_idx" on "engagement_fieldwork_document" ("prepared_by_engagement_auditor_id");
+create index if not exists "engagement_finding_and_recommendations_authorised_by_engagement_auditor_id_idx" on "engagement_finding_and_recommendations" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_finding_and_recommendations_engagement_fieldwork_document_id_idx" on "engagement_finding_and_recommendations" ("engagement_fieldwork_document_id");
+create index if not exists "engagement_finding_and_recommendations_engagement_id_idx" on "engagement_finding_and_recommendations" ("engagement_id");
+create index if not exists "engagement_finding_and_recommendations_organization_id_idx" on "engagement_finding_and_recommendations" ("organization_id");
+create index if not exists "engagement_finding_and_recommendations_prepared_by_engagement_auditor_id_idx" on "engagement_finding_and_recommendations" ("prepared_by_engagement_auditor_id");
+create index if not exists "engagement_planning_document_authorised_by_engagement_auditor_id_idx" on "engagement_planning_document" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_planning_document_engagement_id_idx" on "engagement_planning_document" ("engagement_id");
+create index if not exists "engagement_planning_document_nominated_reviewer_id_idx" on "engagement_planning_document" ("nominated_reviewer_id");
+create index if not exists "engagement_planning_document_organization_id_idx" on "engagement_planning_document" ("organization_id");
+create index if not exists "engagement_planning_document_planning_document_template_id_idx" on "engagement_planning_document" ("planning_document_template_id");
+create index if not exists "engagement_planning_document_prepared_by_engagement_auditor_id_idx" on "engagement_planning_document" ("prepared_by_engagement_auditor_id");
+create index if not exists "engagement_report_document_authorised_by_engagement_auditor_id_idx" on "engagement_report_document" ("authorised_by_engagement_auditor_id");
+create index if not exists "engagement_report_document_engagement_id_idx" on "engagement_report_document" ("engagement_id");
+create index if not exists "engagement_report_document_nominated_reviewer_id_idx" on "engagement_report_document" ("nominated_reviewer_id");
+create index if not exists "engagement_report_document_organization_id_idx" on "engagement_report_document" ("organization_id");
+create index if not exists "engagement_report_document_prepared_by_engagement_auditor_id_idx" on "engagement_report_document" ("prepared_by_engagement_auditor_id");
+create index if not exists "engagement_report_document_report_document_template_id_idx" on "engagement_report_document" ("report_document_template_id");
+create index if not exists "engagement_type_organization_id_idx" on "engagement_type" ("organization_id");
+create index if not exists "expense_engagement_id_idx" on "expense" ("engagement_id");
+create index if not exists "expense_user_id_idx" on "expense" ("user_id");
+create index if not exists "fieldwork_document_review_note_engagement_fieldwork_document_id_idx" on "fieldwork_document_review_note" ("engagement_fieldwork_document_id");
+create index if not exists "fieldwork_document_review_note_organization_id_idx" on "fieldwork_document_review_note" ("organization_id");
+create index if not exists "fieldwork_document_review_note_review_note_id_idx" on "fieldwork_document_review_note" ("review_note_id");
+create index if not exists "guiding_document_organization_id_idx" on "guiding_document" ("organization_id");
+create index if not exists "planned_engagement_annual_audit_plan_id_idx" on "planned_engagement" ("annual_audit_plan_id");
+create index if not exists "planned_engagement_assigned_senior_auditor_id_idx" on "planned_engagement" ("assigned_senior_auditor_id");
+create index if not exists "planned_engagement_authorised_by_id_idx" on "planned_engagement" ("authorised_by_id");
+create index if not exists "planned_engagement_engagement_type_id_idx" on "planned_engagement" ("engagement_type_id");
+create index if not exists "planned_engagement_organization_id_idx" on "planned_engagement" ("organization_id");
+create index if not exists "planned_engagement_prepared_by_id_idx" on "planned_engagement" ("prepared_by_id");
+create index if not exists "planning_document_review_note_engagement_planning_document_id_idx" on "planning_document_review_note" ("engagement_planning_document_id");
+create index if not exists "planning_document_review_note_organization_id_idx" on "planning_document_review_note" ("organization_id");
+create index if not exists "planning_document_review_note_review_note_id_idx" on "planning_document_review_note" ("review_note_id");
+create index if not exists "planning_document_template_organization_id_idx" on "planning_document_template" ("organization_id");
+create index if not exists "report_document_review_note_engagement_report_document_id_idx" on "report_document_review_note" ("engagement_report_document_id");
+create index if not exists "report_document_review_note_organization_id_idx" on "report_document_review_note" ("organization_id");
+create index if not exists "report_document_review_note_review_note_id_idx" on "report_document_review_note" ("review_note_id");
+create index if not exists "report_document_template_organization_id_idx" on "report_document_template" ("organization_id");
+create index if not exists "review_note_cleared_by_engagement_auditor_id_idx" on "review_note" ("cleared_by_engagement_auditor_id");
+create index if not exists "review_note_engagement_id_idx" on "review_note" ("engagement_id");
+create index if not exists "review_note_organization_id_idx" on "review_note" ("organization_id");
+create index if not exists "review_note_reviewer_cae_id_idx" on "review_note" ("reviewer_cae_id");
+create index if not exists "review_note_reviewer_engagement_auditor_id_idx" on "review_note" ("reviewer_engagement_auditor_id");
+create index if not exists "review_note_verified_by_cae_id_idx" on "review_note" ("verified_by_cae_id");
+create index if not exists "review_note_verified_by_engagement_auditor_id_idx" on "review_note" ("verified_by_engagement_auditor_id");
+create index if not exists "risk_assessment_assessed_by_id_idx" on "risk_assessment" ("assessed_by_id");
+create index if not exists "risk_assessment_linked_planned_engagement_id_idx" on "risk_assessment" ("linked_planned_engagement_id");
+create index if not exists "sent_email_organization_id_idx" on "sent_email" ("organization_id");
+create index if not exists "task_assignee_user_id_idx" on "task" ("assignee_user_id");
+create index if not exists "task_engagement_id_idx" on "task" ("engagement_id");
+create index if not exists "time_entry_engagement_id_idx" on "time_entry" ("engagement_id");
+create index if not exists "time_entry_user_id_idx" on "time_entry" ("user_id");
+create index if not exists "user_organization_id_idx" on "user" ("organization_id");
+
+-- Hot query paths (dashboard escalation, reports, REST API updated_since)
+create index if not exists "audit_log_org_timestamp_idx" on "audit_log" ("organization_id", "timestamp" desc);
+create index if not exists "audit_log_table_record_idx" on "audit_log" ("table_name", "record_id");
+create index if not exists "task_org_status_due_idx" on "task" ("organization_id", "status", "due_date");
+create index if not exists "corrective_action_org_status_due_idx" on "corrective_action" ("organization_id", "status", "due_date");
+create index if not exists "engagement_org_updated_idx" on "engagement" ("organization_id", "updated_at" desc);
+create index if not exists "finding_org_updated_idx" on "engagement_finding_and_recommendations" ("organization_id", "updated_at" desc);

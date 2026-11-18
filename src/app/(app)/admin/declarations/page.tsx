@@ -16,7 +16,7 @@ export default async function DeclarationsPage({
   searchParams: Promise<{ id?: string }>;
 }) {
   const { id: editId } = await searchParams;
-  const [rows, sections] = await Promise.all([
+  const [rows, sections, signCounts, conflictCounts] = await Promise.all([
     prisma.declaration.findMany({
       where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID },
       orderBy: { created_at: "asc" },
@@ -25,7 +25,19 @@ export default async function DeclarationsPage({
       where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID },
       orderBy: { created_at: "asc" },
     }),
+    prisma.engagementAuditorDeclaration.groupBy({
+      by: ["declaration_id"],
+      where: { deleted: false, OR: [{ status: "SIGNED" }, { status: "APPROVED" }] },
+      _count: true,
+    }),
+    prisma.engagementAuditorDeclaration.groupBy({
+      by: ["declaration_id"],
+      where: { deleted: false, status: "CONFLICT" },
+      _count: true,
+    }),
   ]);
+  const signedByDecl = new Map(signCounts.map((c) => [c.declaration_id, c._count]));
+  const conflictsByDecl = new Map(conflictCounts.map((c) => [c.declaration_id, c._count]));
 
   // Interleave: each section row (bold/shaded) followed by its declarations, like the live grid
   const gridRows: Record<string, unknown>[] = [];
@@ -46,6 +58,8 @@ export default async function DeclarationsPage({
         id: `dec:${d.id}`, kind: "decl",
         section_decl: d.custom_text ?? d.declaration_text,
         prescribed: d.prescribed, disabled: d.disabled,
+        times_signed: signedByDecl.get(d.id) ?? 0,
+        open_conflicts: conflictsByDecl.get(d.id) ?? 0,
       });
     }
     bySection.delete(s.id);
@@ -56,6 +70,8 @@ export default async function DeclarationsPage({
         id: `dec:${d.id}`, kind: "decl",
         section_decl: d.custom_text ?? d.declaration_text,
         prescribed: d.prescribed, disabled: d.disabled,
+        times_signed: signedByDecl.get(d.id) ?? 0,
+        open_conflicts: conflictsByDecl.get(d.id) ?? 0,
       });
     }
   }
@@ -107,8 +123,17 @@ export default async function DeclarationsPage({
           { field: "disabled", when: true, style: { background: "#fecaca" } },
         ]}
         colDefs={[
-          { field: "section_decl", headerName: "Section/Declaration", flex: 3, wrapText: true, autoHeight: true },
-          { field: "prescribed", headerName: "Prescribed", width: 120 },
+          {
+            field: "section_decl", headerName: "Section / declaration", flex: 3, wrapText: true, autoHeight: true,
+            tooltipField: "section_decl",
+            cellClassRules: { "pl-7": 'data.kind === "decl"' },
+          },
+          {
+            field: "prescribed", headerName: "Prescribed", width: 120,
+            headerTooltip: "A required declaration from the audit methodology — every team member must sign these before being allocated work. Administrators can change this flag.",
+          },
+          { field: "times_signed", headerName: "Times signed", width: 115 },
+          { field: "open_conflicts", headerName: "Open conflicts", width: 125 },
         ]}
       />
       {editDecl && (

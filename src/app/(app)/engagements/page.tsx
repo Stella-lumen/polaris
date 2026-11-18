@@ -4,6 +4,7 @@ import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { DataGrid } from "@/components/data-grid";
 import { AiAnalysisButton, ExportButton, ImportButton } from "@/components/engagement-actions";
 import { fmtRand, budgetPercent } from "@/lib/resource-logic";
+import { isEffective } from "@/lib/declarations";
 
 export const instant = false;
 
@@ -24,6 +25,28 @@ export default async function EngagementsPage() {
     orderBy: { created_at: "desc" },
   });
   const findingCounts = await prisma.engagementFindingAndRecommendations.groupBy({ by: ["engagement_id"], where: { deleted: false }, _count: true });
+  // "x of y team members have signed" per engagement
+  const [activeDeclCount, auditorsByEng, declSignRows] = await Promise.all([
+    prisma.declaration.count({ where: { deleted: false, disabled: false } }),
+    prisma.engagementAuditor.groupBy({ by: ["engagement_id"], where: { deleted: false }, _count: true }),
+    prisma.engagementAuditorDeclaration.findMany({ where: { deleted: false }, select: { engagement_id: true, engagement_auditor_id: true, declaration_id: true, status: true } }),
+  ]);
+  const auditorCountByEng = new Map(auditorsByEng.map((a) => [a.engagement_id, a._count]));
+  const signedByEngAud = new Map<string, Map<string, Set<string>>>();
+  for (const r of declSignRows.filter(isEffective)) {
+    if (!r.engagement_id || !r.engagement_auditor_id || !r.declaration_id) continue;
+    if (!signedByEngAud.has(r.engagement_id)) signedByEngAud.set(r.engagement_id, new Map());
+    const m = signedByEngAud.get(r.engagement_id)!;
+    if (!m.has(r.engagement_auditor_id)) m.set(r.engagement_auditor_id, new Set());
+    m.get(r.engagement_auditor_id)!.add(r.declaration_id);
+  }
+  const declLabel = (engId: string) => {
+    const total = auditorCountByEng.get(engId) ?? 0;
+    if (!total) return "No team yet";
+    if (!activeDeclCount) return "No declarations";
+    const signed = [...(signedByEngAud.get(engId)?.values() ?? [])].filter((s) => s.size >= activeDeclCount).length;
+    return `${signed} of ${total} signed`;
+  };
   const actionCounts = await prisma.correctiveAction.groupBy({ by: ["finding_id"], where: { deleted: false, status: { not: "VERIFIED" } }, _count: true });
   const findingIds = new Map(findingCounts.map((f) => [f.engagement_id, f._count]));
   const findingRows = await prisma.engagementFindingAndRecommendations.findMany({ where: { deleted: false }, select: { id: true, engagement_id: true } });
@@ -92,6 +115,7 @@ export default async function EngagementsPage() {
           status: r.status,
           lead: r.lead ?? "Not assigned",
           team: r.teamSize || "—",
+          declarations: declLabel(r.e.id),
           risk: r.risk ?? "Not linked",
           findings: r.findings,
           open_actions: r.openActions,
@@ -110,6 +134,7 @@ export default async function EngagementsPage() {
           { field: "status", headerName: "Status", width: 115 },
           { field: "lead", headerName: "Lead", width: 140, tooltipField: "lead" },
           { field: "team", headerName: "Team", width: 70 },
+          { field: "declarations", headerName: "Declarations", width: 120, tooltipField: "declarations" },
           { field: "risk", headerName: "Risk / plan", flex: 1, tooltipField: "risk" },
           { field: "findings", headerName: "Findings", width: 90, type: "rightAligned" },
           { field: "open_actions", headerName: "Open actions", width: 110, type: "rightAligned" },

@@ -233,6 +233,14 @@ model Declaration {
 model EngagementAuditorDeclaration {
   id String   @id @default(ulid())
   confirmation_date DateTime?
+  signed_text    String?
+  status         String? @default("SIGNED")
+  conflict_reason String?
+  reviewed_by_user_id String?
+  review_comment String?
+  reviewed_at    DateTime?
+  signed_at      DateTime?
+  declared_year  Int?
   r_engagement   Engagement? @relation("engagement", fields: [engagement_id], references: [id])
   engagement_id   String?
   r_engagement_auditor   EngagementAuditor? @relation("engagement_auditor", fields: [engagement_auditor_id], references: [id])

@@ -14,6 +14,10 @@ const TRIGGER_LABEL: Record<string, string> = {
   TASK_DUE_PASSED: "the due date passes",
   TASK_DAYS_OVERDUE: "days overdue",
   REVIEW_PENDING_DAYS: "days waiting for review",
+  DECL_UNSIGNED_BEFORE_START: "days before the engagement starts while unsigned",
+  DECL_UNSIGNED_AFTER_START: "days after the engagement starts while still unsigned",
+  DECL_CONFLICT_OPEN_DAYS: "days a disclosed conflict waits for review",
+  DECL_REDECLARE_DAYS: "days since last signing (annual re-declaration)",
 };
 
 const input = "w-20 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-60";
@@ -28,6 +32,7 @@ export default async function EscalationRulesPage() {
   const groups = [
     { kind: "corrective_action", title: "Corrective action reminders and escalations" },
     { kind: "task", title: "Task reminders and escalations" },
+    { kind: "declaration", title: "Declaration reminders and escalations" },
   ];
 
   return (

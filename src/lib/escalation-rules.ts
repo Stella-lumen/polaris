@@ -17,5 +17,12 @@ export function ruleFires(
   if (trigger === "TASK_DUE_PASSED") return ctx.daysOverdue != null && ctx.daysOverdue > 0;
   if (trigger === "TASK_DAYS_OVERDUE") return ctx.daysOverdue != null && ctx.daysOverdue >= d;
   if (trigger === "REVIEW_PENDING_DAYS") return ctx.daysInReview != null && ctx.daysInReview >= d;
+  // Declaration triggers — ctx.daysToDue = days until engagement start,
+  // ctx.daysOverdue = days since start, ctx.daysUnverified = days since
+  // conflict disclosed / days since last signing.
+  if (trigger === "DECL_UNSIGNED_BEFORE_START") return ctx.daysToDue != null && ctx.daysToDue >= 0 && ctx.daysToDue <= d;
+  if (trigger === "DECL_UNSIGNED_AFTER_START") return ctx.daysOverdue != null && ctx.daysOverdue >= d;
+  if (trigger === "DECL_CONFLICT_OPEN_DAYS") return ctx.daysUnverified != null && ctx.daysUnverified >= d;
+  if (trigger === "DECL_REDECLARE_DAYS") return ctx.daysUnverified != null && ctx.daysUnverified >= d;
   return false;
 }

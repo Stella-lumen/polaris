@@ -170,6 +170,33 @@ const spec = {
       },
     },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
+    "/declarations": {
+      get: {
+        tags: ["Declarations"],
+        summary: "List ethics and independence declarations with signing counts",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Declarations with section, wording, times signed and open conflicts. Scope: engagements:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks engagements:read" },
+        },
+      },
+    },
+    "/engagements/{id}/declaration-status": {
+      get: {
+        tags: ["Declarations"],
+        summary: "Signing status per team member on an engagement",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "Per-member signed/required counts, conflicts and allocation eligibility. Scope: engagements:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks engagements:read" },
+          "404": { description: "Engagement not found" },
+        },
+      },
+    },
     "/audit-plan-periods": {
       get: {
         tags: ["Audit plans"],

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { SquarePen } from "lucide-react";
 import { CreateDialog } from "@/components/create-dialog";
 import { addTeamMember, removeTeamMember, setEngagementBudget } from "@/lib/actions";
+import { isEffective } from "@/lib/declarations";
 
 export const instant = false;
 
@@ -42,7 +43,7 @@ export default async function EngagementDashboardPage({
   if (!engagement) notFound();
 
   const where = { engagement_id, deleted: false };
-  const [declarations, planningDocs, programItems, fieldworkDocs, reportDocs, team, users, timeUsed, expUsed] = await Promise.all([
+  const [declarations, planningDocs, programItems, fieldworkDocs, reportDocs, team, users, timeUsed, expUsed, activeDeclCount, signedRows] = await Promise.all([
     prisma.engagementAuditorDeclaration.findMany({ where, select: { authorised_date: true } }),
     prisma.engagementPlanningDocument.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
     prisma.engagementAuditProgramItem.findMany({ where, select: { prepared_date: true, authorised_date: true } }),
@@ -52,7 +53,18 @@ export default async function EngagementDashboardPage({
     prisma.user.findMany({ where: { deleted: false, disabled: false } }),
     prisma.timeEntry.aggregate({ where, _sum: { hours: true } }),
     prisma.expense.aggregate({ where, _sum: { amount: true } }),
+    prisma.declaration.count({ where: { deleted: false, disabled: false } }),
+    prisma.engagementAuditorDeclaration.findMany({ where, select: { engagement_auditor_id: true, declaration_id: true, status: true } }),
   ]);
+  // Team members who have signed (or had approved conflicts on) every active declaration
+  const signedByAuditor = new Map<string, Set<string>>();
+  for (const r of signedRows.filter(isEffective)) {
+    if (!r.engagement_auditor_id || !r.declaration_id) continue;
+    if (!signedByAuditor.has(r.engagement_auditor_id)) signedByAuditor.set(r.engagement_auditor_id, new Set());
+    signedByAuditor.get(r.engagement_auditor_id)!.add(r.declaration_id);
+  }
+  const auditors = await prisma.engagementAuditor.findMany({ where, select: { id: true } });
+  const fullySigned = auditors.filter((a) => (signedByAuditor.get(a.id)?.size ?? 0) >= activeDeclCount && activeDeclCount > 0).length;
   const stageItems = [declarations, planningDocs, programItems, fieldworkDocs, reportDocs];
   const usedHours = Number(timeUsed._sum.hours ?? 0);
   const usedExp = Number(expUsed._sum.amount ?? 0);
@@ -99,6 +111,12 @@ export default async function EngagementDashboardPage({
           );
         })}
       </div>
+      <p className="max-w-xl pl-8 text-sm text-muted-foreground">
+        {auditors.length === 0
+          ? "No team members yet — add people below, then they sign under Independence assessment."
+          : `${fullySigned} of ${auditors.length} team member${auditors.length === 1 ? " has" : "s have"} signed all declarations.`}{" "}
+        <Link href={`/engagements/${engagement_id}/auditor-declarations`} className="text-orange-600 hover:underline">Open independence assessment</Link>
+      </p>
 
       <div className="w-full max-w-3xl rounded-md border p-4">
         <div className="mb-3 flex items-center justify-between">

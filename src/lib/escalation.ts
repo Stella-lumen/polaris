@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { ruleFires } from "@/lib/escalation-rules";
+import { isEffective } from "@/lib/declarations";
 import { deliverEmail } from "@/lib/mailer";
 import { logAudit } from "@/lib/audit";
 
@@ -22,7 +23,7 @@ export async function escalateOverdueWork() {
   const now = new Date();
   const DAY = 86400_000;
 
-  const [tasks, actions, rules, users] = await Promise.all([
+  const [tasks, actions, rules, users, auditors, activeDecls, declSignRows] = await Promise.all([
     prisma.task.findMany({
       where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, status: { notIn: ["DONE", "CLOSED"] } },
       include: { r_assignee: true, r_engagement: true },
@@ -33,6 +34,12 @@ export async function escalateOverdueWork() {
     }),
     prisma.escalationRule.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, orderBy: { sort_order: "asc" } }),
     prisma.user.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, select: { id: true, email: true, role: true, first_name: true, last_name: true } }),
+    prisma.engagementAuditor.findMany({
+      where: { deleted: false },
+      include: { r_user: true, r_engagement: { select: { id: true, engagement_name: true, start_date: true } } },
+    }),
+    prisma.declaration.findMany({ where: { deleted: false, disabled: false }, select: { id: true } }),
+    prisma.engagementAuditorDeclaration.findMany({ where: { deleted: false } }),
   ]);
   const byId = new Map(users.map((u) => [u.id, u]));
   const caeEmails = users.filter((u) => u.role === "org:chief_audit_executive").map((u) => u.email).filter(Boolean) as string[];
@@ -41,6 +48,7 @@ export async function escalateOverdueWork() {
 
   const taskRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "task");
   const caRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "corrective_action");
+  const declRules = rules.filter((r) => r.entity_kind === "declaration");
 
   type Notice = { kind: string; itemId: string; level: number; ruleId: string; to: string[]; cc: string[]; subject: string; reason: string; body: string };
   const notices: Notice[] = [];
@@ -105,6 +113,74 @@ export async function escalateOverdueWork() {
     });
   }
 
+  // --- declarations: unsigned before start, open conflicts, annual re-declaration ---
+  if (declRules.length && activeDecls.length) {
+    const requiredIds = new Set(activeDecls.map((d) => d.id));
+    const rowsByAud = new Map<string, typeof declSignRows>();
+    for (const r of declSignRows) {
+      if (!r.engagement_auditor_id) continue;
+      if (!rowsByAud.has(r.engagement_auditor_id)) rowsByAud.set(r.engagement_auditor_id, []);
+      rowsByAud.get(r.engagement_auditor_id)!.push(r);
+    }
+    for (const a of auditors) {
+      const mine = rowsByAud.get(a.id) ?? [];
+      const engName = a.r_engagement?.engagement_name ?? "an engagement";
+      const person = [a.r_user?.first_name, a.r_user?.last_name].filter(Boolean).join(" ") || "A team member";
+      const signedIds = new Set(mine.filter((r) => isEffective(r)).map((r) => r.declaration_id).filter(Boolean) as string[]);
+      const unsigned = [...requiredIds].filter((id) => !signedIds.has(id));
+      const openConflict = mine.find((r) => r.status === "CONFLICT");
+      const latestSigned = mine.filter((r) => r.signed_at).sort((x, y) => (y.signed_at?.getTime() ?? 0) - (x.signed_at?.getTime() ?? 0))[0];
+
+      const ctx = {
+        daysToDue: a.r_engagement?.start_date ? Math.floor((a.r_engagement.start_date.getTime() - now.getTime()) / DAY) : null,
+        daysOverdue: a.r_engagement?.start_date ? Math.floor((now.getTime() - a.r_engagement.start_date.getTime()) / DAY) : null,
+        daysUnverified: openConflict
+          ? Math.floor((now.getTime() - (openConflict.updated_at?.getTime() ?? now.getTime())) / DAY)
+          : latestSigned?.signed_at
+            ? Math.floor((now.getTime() - latestSigned.signed_at.getTime()) / DAY)
+            : null,
+        status: unsigned.length ? "UNSIGNED" : "SIGNED",
+      };
+
+      for (const rule of declRules) {
+        const applies =
+          rule.trigger === "DECL_UNSIGNED_BEFORE_START" || rule.trigger === "DECL_UNSIGNED_AFTER_START"
+            ? unsigned.length > 0
+            : rule.trigger === "DECL_CONFLICT_OPEN_DAYS"
+              ? !!openConflict
+              : rule.trigger === "DECL_REDECLARE_DAYS"
+                ? !unsigned.length && !!latestSigned
+                : false;
+        if (!applies || !ruleFires(rule.trigger, rule.days, ctx)) continue;
+        const level = declRules.indexOf(rule) + 1;
+        const to = a.r_user?.email ? [a.r_user.email] : [];
+        const cc: string[] = [];
+        if (rule.notify_supervisor || level >= 2) {
+          const lead = auditors.find((x) => x.engagement_id === a.engagement_id && x.position_on_audit === "LEAD" && x.id !== a.id);
+          if (lead?.r_user?.email) cc.push(lead.r_user.email);
+        }
+        if (rule.notify_cae) cc.push(...caeEmails);
+        const reason =
+          rule.trigger === "DECL_UNSIGNED_BEFORE_START"
+            ? `Reminder: ${unsigned.length} declaration${unsigned.length === 1 ? "" : "s"} to sign before ${engName} starts`
+            : rule.trigger === "DECL_UNSIGNED_AFTER_START"
+              ? `Escalation: ${unsigned.length} declaration${unsigned.length === 1 ? "" : "s"} still unsigned after ${engName} started`
+              : rule.trigger === "DECL_CONFLICT_OPEN_DAYS"
+                ? `Disclosed conflict waiting for review${ctx.daysUnverified ? ` for ${ctx.daysUnverified} day${ctx.daysUnverified === 1 ? "" : "s"}` : ""}`
+                : `Annual re-declaration due — last signed ${latestSigned?.signed_at?.toISOString().slice(0, 10) ?? "over a year ago"}`;
+        notices.push({
+          kind: "declaration", itemId: a.id, level, ruleId: rule.id,
+          to: rule.trigger === "DECL_CONFLICT_OPEN_DAYS" && cc.length ? cc.slice(0, 1) : to.length ? to : [fallback].filter(Boolean),
+          cc: rule.trigger === "DECL_CONFLICT_OPEN_DAYS" && cc.length ? [] : cc,
+          subject: `${reason} — ${person}`,
+          reason,
+          body: `${person} on "${engName}": ${reason.toLowerCase()}. Sign or review under Independence assessment.`,
+        });
+        break; // highest-priority matching rule wins per auditor
+      }
+    }
+  }
+
   // Deliver each notice once per level per recipient.
   let sent = 0;
   for (const n of notices) {
@@ -124,7 +200,7 @@ export async function escalateOverdueWork() {
     });
     await deliverEmail(row.id);
     await logAudit(
-      n.kind === "task" ? "Tasks" : "Corrective Actions",
+      n.kind === "task" ? "Tasks" : n.kind === "declaration" ? "Engagement Auditor Declarations" : "Corrective Actions",
       n.itemId,
       "NOTIFICATION",
       { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },

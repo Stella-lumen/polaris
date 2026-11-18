@@ -6,15 +6,22 @@ import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { actorId, requireUser, requireRole, canAuthorise, hashPassword } from "@/lib/auth";
 import { API_SCOPES } from "@/lib/api-scopes";
 import { validatePeriod, canTransition, typeLabel } from "@/lib/period-validation";
+import { isEffective, allocationBlock, canReviewConflict } from "@/lib/declarations";
 
 async function scope() {
   const uid = await actorId();
   return { organization_id: DEMO_ORGANIZATION_ID, created_by: uid, updated_by: uid };
 }
 
-export async function logAudit(table: string, recordId: string, op: string, values: unknown) {
+export async function logAudit(
+  table: string,
+  recordId: string,
+  op: string,
+  values: unknown,
+  opts?: { system?: boolean; recordLabel?: string; userId?: string; actorLabel?: string; originalValues?: unknown; note?: string },
+) {
   const { logAudit: write } = await import("@/lib/audit");
-  await write(table, recordId, op, values);
+  await write(table, recordId, op, values, opts);
 }
 
 const str = (v: unknown) => String(v ?? "").trim() || null;
@@ -664,25 +671,113 @@ export async function ensureStageDocs(engagementId: string) {
   }
 }
 
-/** Confirm/toggle a declaration cell for an auditor (the declarations matrix). */
-export async function confirmDeclaration(engagementId: string, engagementAuditorId: string, declarationId: string) {
+/** Sign a declaration — only the auditor themselves may sign, and the
+ *  exact wording is snapshotted so later edits can't change what was signed. */
+export async function signDeclaration(engagementId: string, declarationId: string) {
   const user = await requireUser();
+  const aud = await prisma.engagementAuditor.findFirst({
+    where: { engagement_id: engagementId, user_id: user.id, deleted: false },
+  });
+  if (!aud) throw new Error("Only a team member of this engagement can sign its declarations.");
+  const decl = await prisma.declaration.findFirst({ where: { id: declarationId, deleted: false, disabled: false } });
+  if (!decl) throw new Error("This declaration is not available for signing.");
+  const text = decl.custom_text ?? decl.declaration_text ?? "";
   const b = await scope();
   const ex = await prisma.engagementAuditorDeclaration.findFirst({
-    where: { engagement_id: engagementId, engagement_auditor_id: engagementAuditorId, declaration_id: declarationId, deleted: false },
+    where: { engagement_id: engagementId, engagement_auditor_id: aud.id, declaration_id: declarationId, deleted: false },
   });
-  if (ex) {
-    await prisma.engagementAuditorDeclaration.update({
-      where: { id: ex.id },
-      data: { confirmation_date: ex.confirmation_date ? null : new Date(), updated_by: user.id },
-    });
-  } else {
-    await prisma.engagementAuditorDeclaration.create({
-      data: { ...b, engagement_id: engagementId, engagement_auditor_id: engagementAuditorId, declaration_id: declarationId, confirmation_date: new Date() },
-    });
-  }
-  await logAudit("Engagement Auditor Declarations", ex?.id ?? `${engagementAuditorId}/${declarationId}`, "UPDATE", { confirmed: !ex?.confirmation_date });
+  const data = {
+    confirmation_date: new Date(), signed_at: new Date(), signed_text: text,
+    status: "SIGNED", declared_year: new Date().getFullYear(),
+    conflict_reason: null, review_comment: null, updated_by: user.id, updated_at: new Date(),
+  };
+  if (ex) await prisma.engagementAuditorDeclaration.update({ where: { id: ex.id }, data });
+  else await prisma.engagementAuditorDeclaration.create({ data: { ...b, engagement_id: engagementId, engagement_auditor_id: aud.id, declaration_id: declarationId, ...data } });
+  const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+  await logAudit("Engagement Auditor Declarations", ex?.id ?? `${aud.id}/${declarationId}`, "UPDATE",
+    { message: `${name} signed a declaration — "${text.slice(0, 80)}${text.length > 80 ? "…" : ""}"` },
+    { userId: user.id });
   revalidatePath(`/engagements/${engagementId}/auditor-declarations`);
+}
+
+/** "I cannot confirm this" — discloses a conflict, routed to a supervisor. */
+export async function discloseDeclarationConflict(engagementId: string, declarationId: string, formData: FormData) {
+  const user = await requireUser();
+  const aud = await prisma.engagementAuditor.findFirst({
+    where: { engagement_id: engagementId, user_id: user.id, deleted: false },
+  });
+  if (!aud) throw new Error("Only a team member of this engagement can disclose a conflict.");
+  const reason = str(formData.get("reason"));
+  if (!reason) throw new Error("Say why you cannot confirm this declaration.");
+  const decl = await prisma.declaration.findFirst({ where: { id: declarationId, deleted: false, disabled: false } });
+  if (!decl) throw new Error("This declaration is not available.");
+  const text = decl.custom_text ?? decl.declaration_text ?? "";
+  const b = await scope();
+  const ex = await prisma.engagementAuditorDeclaration.findFirst({
+    where: { engagement_id: engagementId, engagement_auditor_id: aud.id, declaration_id: declarationId, deleted: false },
+  });
+  const data = {
+    status: "CONFLICT", conflict_reason: reason, signed_text: text,
+    reviewed_by_user_id: null, review_comment: null, reviewed_at: null, updated_by: user.id, updated_at: new Date(),
+  };
+  if (ex) await prisma.engagementAuditorDeclaration.update({ where: { id: ex.id }, data });
+  else await prisma.engagementAuditorDeclaration.create({ data: { ...b, engagement_id: engagementId, engagement_auditor_id: aud.id, declaration_id: declarationId, ...data } });
+  const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+  await logAudit("Engagement Auditor Declarations", ex?.id ?? `${aud.id}/${declarationId}`, "UPDATE",
+    { message: `${name} disclosed a conflict — "${reason.slice(0, 80)}${reason.length > 80 ? "…" : ""}" — sent for supervisor review` },
+    { userId: user.id });
+  revalidatePath(`/engagements/${engagementId}/auditor-declarations`);
+}
+
+/** Supervisor decision on a disclosed conflict: approve with conditions, or reassign. */
+export async function reviewDeclarationConflict(rowId: string, decision: string, formData: FormData) {
+  const user = await requireUser();
+  const row = await prisma.engagementAuditorDeclaration.findFirst({
+    where: { id: rowId, deleted: false },
+    include: { r_engagement_auditor: true },
+  });
+  if (!row || row.status !== "CONFLICT") throw new Error("This conflict is not waiting for review.");
+  const discloser = row.r_engagement_auditor?.user_id;
+  const selfCheck = canReviewConflict(user.id, discloser ?? "");
+  if (selfCheck) throw new Error(selfCheck);
+  const isLead = discloser && (await prisma.engagementAuditor.findFirst({
+    where: { engagement_id: row.engagement_id, user_id: user.id, deleted: false, position_on_audit: { in: ["LEAD", "CAE"] } },
+  }));
+  if (!isLead && !canAuthorise(user)) throw new Error("Only the engagement lead or CAE can review conflicts.");
+  const approve = decision === "APPROVED";
+  const comment = str(formData.get("comment"));
+  if (approve && !comment) throw new Error("Say the conditions under which this is approved.");
+  await prisma.engagementAuditorDeclaration.update({
+    where: { id: rowId },
+    data: {
+      status: approve ? "APPROVED" : "REASSIGNED",
+      reviewed_by_user_id: user.id, review_comment: comment, reviewed_at: new Date(),
+      authorised_by_engagement_auditor_id: (await auditorFor(row.engagement_id!, user.id)).id,
+      authorised_date: new Date(), updated_by: user.id, updated_at: new Date(),
+    },
+  });
+  const reviewer = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+  await logAudit("Engagement Auditor Declarations", rowId, "UPDATE",
+    { message: `${reviewer} ${approve ? "approved a disclosed conflict with conditions" : "reassigned work after a disclosed conflict"}${comment ? ` — "${comment.slice(0, 80)}${comment.length > 80 ? "…" : ""}"` : ""}` },
+    { userId: user.id });
+  revalidatePath(`/engagements/${row.engagement_id}/auditor-declarations`);
+}
+
+/** Block reason if a team member hasn't effectively signed all active declarations — or null. */
+async function declarationBlock(engagementId: string, userId: string): Promise<string | null> {
+  const [decls, aud, teamRow, rows, u] = await Promise.all([
+    prisma.declaration.findMany({ where: { deleted: false, disabled: false }, select: { id: true } }),
+    prisma.engagementAuditor.findFirst({ where: { engagement_id: engagementId, user_id: userId, deleted: false } }),
+    prisma.engagementTeamMember.findFirst({ where: { engagement_id: engagementId, user_id: userId, deleted: false } }),
+    prisma.engagementAuditorDeclaration.findMany({ where: { engagement_id: engagementId, deleted: false } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { first_name: true, last_name: true, email: true } }),
+  ]);
+  if (!aud && !teamRow) return null; // not on the team — nothing to gate
+  const signed = new Set(rows.filter((r) => r.engagement_auditor_id === aud?.id && isEffective(r)).map((r) => r.declaration_id).filter(Boolean) as string[]);
+  return allocationBlock(
+    u ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || (u.email ?? "This person") : "This person",
+    [...signed], decls.map((d) => d.id),
+  );
 }
 
 /** Create a review note linked to a stage document. */
@@ -1221,6 +1316,12 @@ export async function reassignCorrectiveAction(id: string, formData: FormData) {
 
 // ---------- tasks & scheduling ----------
 export async function createTask(formData: FormData) {
+  const engId = str(formData.get("engagement_id"));
+  const assignee = str(formData.get("assignee_user_id"));
+  if (engId && assignee) {
+    const block = await declarationBlock(engId, assignee);
+    if (block) throw new Error(block);
+  }
   const t = await prisma.task.create({
     data: {
       ...(await scope()),
@@ -1396,6 +1497,11 @@ export async function createTimeEntry(formData: FormData) {
     const warnings = timeEntryWarnings({ date: workDate, hours, holidays });
     if (warnings.length) throw new Error("CONFIRM:" + warnings.join(" "));
   }
+  const engIdForDecl = str(formData.get("engagement_id"));
+  if (engIdForDecl) {
+    const block = await declarationBlock(engIdForDecl, userId);
+    if (block) throw new Error(block);
+  }
   const t = await prisma.timeEntry.create({
     data: {
       ...(await scope()),
@@ -1562,18 +1668,32 @@ export async function markExpensePaid(id: string) {
 export async function addTeamMember(engagementId: string, formData: FormData) {
   const user = await requireUser();
   if (!canAuthorise(user)) throw new Error("Only a supervisor can change the engagement team");
+  const userId = str(formData.get("user_id"));
+  const role = str(formData.get("role"));
+  const b = await scope();
   const m = await prisma.engagementTeamMember.create({
     data: {
-      ...(await scope()),
+      ...b,
       engagement_id: engagementId,
-      user_id: str(formData.get("user_id")),
-      role: str(formData.get("role")),
+      user_id: userId,
+      role,
       planned_hours: Number(formData.get("planned_hours")) || null,
       start_date: date(formData.get("start_date")),
       end_date: date(formData.get("end_date")),
     },
   });
-  await logAudit("Engagement Team", m.id, "INSERT", m);
+  // Same person joins the declarations matrix — they must sign before being allocated
+  if (userId) {
+    const aud = await prisma.engagementAuditor.findFirst({ where: { engagement_id: engagementId, user_id: userId, deleted: false } });
+    if (!aud) {
+      await prisma.engagementAuditor.create({
+        data: { ...b, engagement_id: engagementId, user_id: userId, position_on_audit: role === "LEAD" ? "LEAD" : role === "REVIEWER" ? "REVIEWER" : "AUDITOR" },
+      });
+    }
+  }
+  const added = userId ? await prisma.user.findUnique({ where: { id: userId }, select: { first_name: true, last_name: true, email: true } }) : null;
+  const addedName = added ? `${added.first_name ?? ""} ${added.last_name ?? ""}`.trim() || added.email : "A person";
+  await logAudit("Engagement Team", m.id, "INSERT", { message: `${addedName} added to the engagement team — ${role?.toLowerCase() ?? "member"} · declarations to sign next` });
   revalidatePath(`/engagements/${engagementId}/dashboard`);
   revalidatePath("/resources");
 }
@@ -2179,6 +2299,12 @@ async function applyTypeDefaults(engagementId: string, typeId: string) {
   const roleMap: Record<string, string | null> = {};
   for (const m of team) if (m.role && !roleMap[m.role]) roleMap[m.role] = m.user_id;
   const lead = team.find((m) => m.role === "LEAD")?.user_id ?? team[0]?.user_id ?? null;
+  // Team members who haven't signed can't be assigned — task stays open/unassigned
+  const signedOut = new Set<string>();
+  for (const uid of new Set([lead, ...Object.values(roleMap)].filter(Boolean) as string[])) {
+    if (await declarationBlock(engagementId, uid)) signedOut.add(uid);
+  }
+  const eligible = (uid: string | null) => (uid && !signedOut.has(uid) ? uid : null);
   const base = eng.start_date ?? new Date();
   for (const tp of templates) {
     const due = new Date(base);
@@ -2187,7 +2313,7 @@ async function applyTypeDefaults(engagementId: string, typeId: string) {
       data: {
         organization_id: eng.organization_id,
         title: tp.title, stage: tp.stage, engagement_id: engagementId,
-        assignee_user_id: roleMap[tp.default_role ?? ""] ?? lead,
+        assignee_user_id: eligible(roleMap[tp.default_role ?? ""]) ?? eligible(lead),
         supervisor_user_id: lead,
         due_date: due, planned_hours: tp.planned_hours, status: "OPEN",
       },

@@ -58,11 +58,15 @@ export function Sidebar({
   lastName,
   userEmail,
   userRole,
+  orgName,
+  orgLogoUrl,
 }: {
   firstName: string;
   lastName: string;
   userEmail: string;
   userRole: string;
+  orgName: string;
+  orgLogoUrl: string;
 }) {
   const showAdmin = userRole === "org:admin";
   const pathname = usePathname();
@@ -79,7 +83,7 @@ export function Sidebar({
     return (
       <aside className="flex w-14 shrink-0 flex-col border-r p-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/stella-lumen.jpg" alt="Stella Lumen" className="mb-2 h-8 w-8 rounded-full object-cover" />
+        <img src={orgLogoUrl} alt={orgName} className="mb-2 h-8 w-8 rounded-full object-cover" />
         <button onClick={() => setCollapsed(false)} className="rounded-md p-2 hover:bg-accent" title="Expand">
           <PanelLeft className="h-4 w-4" />
         </button>
@@ -92,8 +96,8 @@ export function Sidebar({
       <div className="flex items-center justify-between p-4 pb-2">
         <div className="flex items-center gap-2 px-2 font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/stella-lumen.jpg" alt="Stella Lumen" className="h-7 w-7 rounded-full object-cover" />
-          Stella Lumen
+          <img src={orgLogoUrl} alt={orgName} className="h-7 w-7 rounded-full object-cover" />
+          {orgName}
         </div>
         <button onClick={() => setCollapsed(true)} className="rounded-md p-1.5 hover:bg-accent" title="Collapse">
           <PanelLeft className="h-4 w-4" />

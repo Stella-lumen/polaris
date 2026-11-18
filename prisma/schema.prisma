@@ -640,6 +640,12 @@ model Organization {
   id String   @id @default(ulid())
   clerk_id String?
   name String?
+  address String?
+  contact_email String?
+  contact_phone String?
+  website String?
+  registration_number String?
+  logo_file_id String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
   created_by String?

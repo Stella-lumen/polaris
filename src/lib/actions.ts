@@ -181,11 +181,35 @@ export async function createOrganization(formData: FormData) {
 
 export async function updateOrganization(id: string, formData: FormData) {
   const admin = await requireRole(["org:admin"]);
+  let logo_file_id: string | undefined;
+  const logo = formData.get("logo");
+  if (logo instanceof File && logo.size > 0) {
+    const sf = await prisma.storedFile.create({
+      data: {
+        organization_id: DEMO_ORGANIZATION_ID,
+        created_by: admin.id,
+        updated_by: admin.id,
+        name: logo.name,
+        mime_type: logo.type || "image/png",
+        size: logo.size,
+        data: Buffer.from(await logo.arrayBuffer()),
+        entity_type: "organization_logo",
+        entity_id: id,
+      },
+    });
+    logo_file_id = sf.id;
+  }
   const o = await prisma.organization.update({
     where: { id },
     data: {
       name: str(formData.get("name")),
       clerk_id: str(formData.get("clerk_id")),
+      address: str(formData.get("address")),
+      contact_email: str(formData.get("contact_email")),
+      contact_phone: str(formData.get("contact_phone")),
+      website: str(formData.get("website")),
+      registration_number: str(formData.get("registration_number")),
+      ...(logo_file_id ? { logo_file_id } : {}),
       disabled: formData.get("disabled") === "on",
       updated_by: admin.id,
       updated_at: new Date(),

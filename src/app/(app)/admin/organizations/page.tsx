@@ -41,7 +41,9 @@ export default async function OrganizationsPage({
         rowStyleRules={[{ field: "disabled", when: true, style: { background: "#fecaca" } }]}
         colDefs={[
           { field: "name", headerName: "Name", flex: 2 },
-          { field: "clerk_id", headerName: "External ID", flex: 2 },
+          { field: "clerk_id", headerName: "External ID", flex: 1.5 },
+          { field: "contact_email", headerName: "Contact Email", flex: 1.5 },
+          { field: "website", headerName: "Website", flex: 1.3 },
           { field: "disabled", headerName: "Disabled", width: 110 },
         ]}
       />
@@ -53,11 +55,22 @@ export default async function OrganizationsPage({
           values={{
             name: editRow.name,
             clerk_id: editRow.clerk_id,
+            registration_number: editRow.registration_number,
+            address: editRow.address,
+            contact_email: editRow.contact_email,
+            contact_phone: editRow.contact_phone,
+            website: editRow.website,
             disabled: editRow.disabled,
           }}
           fields={[
             { name: "name", label: "Name", required: true, placeholder: "Enter a name" },
-            { name: "clerk_id", label: "External ID", placeholder: "Enter an external ID" },
+            { name: "clerk_id", label: "External ID (ERP / AD tenant)", placeholder: "e.g. AgriSETA vendor or tenant ID" },
+            { name: "registration_number", label: "Registration / Entity No." },
+            { name: "address", label: "Physical Address", type: "textarea" },
+            { name: "contact_email", label: "Contact Email" },
+            { name: "contact_phone", label: "Contact Phone" },
+            { name: "website", label: "Website" },
+            { name: "logo", label: "Logo", type: "file" },
             { name: "disabled", label: "Disabled", type: "checkbox" },
           ]}
         />

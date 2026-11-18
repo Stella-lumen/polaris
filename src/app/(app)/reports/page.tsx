@@ -163,6 +163,11 @@ export default async function ReportsPage() {
     },
   ];
 
+  const org = await prisma.organization.findUnique({
+    where: { id: DEMO_ORGANIZATION_ID },
+    select: { name: true },
+  });
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between">
@@ -174,7 +179,7 @@ export default async function ReportsPage() {
           FY 2026/27 · data as at {new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
         </span>
       </div>
-      <ReportsClient reports={reports} />
+      <ReportsClient reports={reports} orgName={org?.name ?? "Internal Audit"} />
     </div>
   );
 }

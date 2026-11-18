@@ -17,7 +17,7 @@ export type ReportDef = {
 
 const PAGE_SIZE = 20;
 
-export function ReportsClient({ reports }: { reports: ReportDef[] }) {
+export function ReportsClient({ reports, orgName }: { reports: ReportDef[]; orgName: string }) {
   const [reportId, setReportId] = useState(reports[0]?.id ?? "");
   const [user, setUser] = useState("all");
   const [search, setSearch] = useState("");
@@ -67,7 +67,7 @@ export function ReportsClient({ reports }: { reports: ReportDef[] }) {
       report.columns.map((c) => `<td style="border:1px solid #ccc;padding:6px">${String(r[c.key] ?? "").replace(/</g, "&lt;")}</td>`).join("") +
       "</tr>",
     ).join("");
-    return `<h2>${report.title}</h2><p>${filtered.length} records — generated ${new Date().toLocaleString()}</p><table style="border-collapse:collapse;font-family:Arial;font-size:11px"><thead><tr><th style="border:1px solid #ccc;padding:6px;background:#ea580c;color:#fff">#</th>${th}</tr></thead><tbody>${trs}</tbody></table>`;
+    return `<h3 style="margin:0;color:#ea580c">${orgName} — Internal Audit Activity</h3><h2 style="margin-top:4px">${report.title}</h2><p>${filtered.length} records — generated ${new Date().toLocaleString()}</p><table style="border-collapse:collapse;font-family:Arial;font-size:11px"><thead><tr><th style="border:1px solid #ccc;padding:6px;background:#ea580c;color:#fff">#</th>${th}</tr></thead><tbody>${trs}</tbody></table>`;
   };
 
   const exportWord = () => {

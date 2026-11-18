@@ -8,7 +8,7 @@ const DEMO_PASSWORD_HASH = bcrypt.hashSync("Polaris2026!", 10);
 const org = await prisma.organization.upsert({
   where: { id: ORG },
   update: {},
-  create: { id: ORG, name: "Demo Org" },
+  create: { id: ORG, name: "AgriSETA" },
 });
 
 // Roster mirrors the live app's 15 users; the three demo logins keep functional

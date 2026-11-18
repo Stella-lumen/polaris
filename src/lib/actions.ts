@@ -858,8 +858,9 @@ export async function createApiKey(formData: FormData) {
       ...(await scope()),
       name: str(formData.get("name")),
       key_hash: createHash("sha256").update(plain).digest("hex"),
+      key_prefix: plain.slice(0, 10),
       scopes: requested.length ? requested : API_SCOPES,
-      expires_at: date(formData.get("expires_at")),
+      expires_at: date(formData.get("expires_at")) ?? new Date(Date.now() + 90 * 86400_000),
     },
   });
   await logAudit("Api Keys", k.id, "INSERT", { name: k.name, scopes: k.scopes });
@@ -870,8 +871,21 @@ export async function createApiKey(formData: FormData) {
 export async function revokeApiKey(id: string) {
   await requireRole(["org:admin"]);
   const uid = await actorId();
-  await prisma.apiKey.update({ where: { id }, data: { disabled: true, updated_by: uid } });
-  await logAudit("Api Keys", id, "UPDATE", { disabled: true });
+  await prisma.apiKey.update({ where: { id }, data: { disabled: true, revoked_at: new Date(), updated_by: uid } });
+  await logAudit("Api Keys", id, "UPDATE", { disabled: true, revoked_at: new Date() });
+  revalidatePath("/admin/api-keys");
+}
+
+/** Hard-delete is only allowed on keys that are already revoked or expired. */
+export async function deleteApiKey(id: string) {
+  await requireRole(["org:admin"]);
+  const k = await prisma.apiKey.findUnique({ where: { id } });
+  if (!k || k.deleted) return;
+  const expired = k.expires_at && k.expires_at < new Date();
+  if (!k.disabled && !expired) throw new Error("Only revoked or expired keys can be deleted.");
+  const uid = await actorId();
+  await prisma.apiKey.update({ where: { id }, data: { deleted: true, deleted_at: new Date(), deleted_by: uid } });
+  await logAudit("Api Keys", id, "DELETE", { name: k.name });
   revalidatePath("/admin/api-keys");
 }
 

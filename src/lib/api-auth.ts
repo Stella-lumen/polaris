@@ -31,11 +31,14 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
   }
   const key = req.headers.get("x-api-key") ?? "";
   if (!key) {
+    void auditAuthFail(requestId, null, "missing key");
     return { error: err(401, "invalid_key", "The key is missing, wrong, revoked or expired.", requestId), requestId };
   }
   const hash = createHash("sha256").update(key).digest("hex");
   const k = await prisma.apiKey.findFirst({ where: { key_hash: hash, deleted: false } });
   if (!k || k.disabled || (k.expires_at && k.expires_at < new Date())) {
+    const reason = !k ? "unknown key" : k.disabled ? "revoked key" : "expired key";
+    void auditAuthFail(requestId, k?.id ?? null, reason);
     return { error: err(401, "invalid_key", "The key is missing, wrong, revoked or expired.", requestId), requestId };
   }
 
@@ -57,11 +60,34 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
 
   const scopes = Array.isArray(k.scopes) ? (k.scopes as string[]) : [];
   if (scope && !scopes.includes(scope)) {
+    void auditAuthFail(requestId, k.id, `insufficient scope: needed ${scope}`);
     return { error: err(403, "insufficient_scope", `This key does not have the ${scope} scope.`, requestId), requestId };
   }
 
-  await prisma.apiKey.update({ where: { id: k.id }, data: { last_used_at: new Date() } });
+  // Throttle last-used writes to at most once per minute per key.
+  if (!k.last_used_at || now - k.last_used_at.getTime() > WINDOW_MS) {
+    await prisma.apiKey.update({ where: { id: k.id }, data: { last_used_at: new Date() } });
+  }
   return { org: k.organization_id ?? DEMO_ORGANIZATION_ID, requestId };
+}
+
+/** Logs API auth failures to the audit trail — never the raw key. Fire-and-forget. */
+async function auditAuthFail(requestId: string, keyId: string | null, reason: string) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        organization_id: DEMO_ORGANIZATION_ID,
+        schema_name: "public",
+        table_name: "Api Keys",
+        record_id: keyId ?? "unknown",
+        operation_type: "AUTH_FAIL",
+        timestamp: new Date(),
+        original_values: {},
+        new_values: { reason, request_id: requestId },
+        query: "api-auth",
+      },
+    });
+  } catch { /* auditing must never break auth */ }
 }
 
 export type ListQuery = {

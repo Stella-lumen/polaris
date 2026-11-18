@@ -43,9 +43,10 @@ Dev password is set by the seed — see `prisma/seed.mjs`.
 ## REST API
 
 Read-only v1 API + `POST /api/v1/users/sync` (directory/AD user
-provisioning). Keys are generated under Admin → API Keys, stored as
-SHA-256 hashes, scoped per resource. See `public/api-docs.html` and
-`scripts/sync-ad-users.mjs`.
+provisioning). Keys are generated under Admin → API Keys (scoped,
+expiring — default 90 days), shown once, stored as SHA-256 hashes.
+Docs: in-app at `/admin/api-docs`, interactive Swagger UI at `/api/docs`,
+OpenAPI spec at `/api/v1/openapi.json`. Demo sender: `scripts/sync-ad-users.mjs`.
 
 ## Supabase
 

@@ -603,10 +603,12 @@ model ApiKey {
   id String   @id @default(ulid())
   name String?
   key_hash String?
+  key_prefix String?
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   scopes Json
   expires_at DateTime?
+  revoked_at DateTime?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
   last_used_at DateTime?

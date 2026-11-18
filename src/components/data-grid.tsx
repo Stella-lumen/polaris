@@ -7,7 +7,7 @@ import {
 } from "ag-grid-community";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Pencil, FileText, Download, CheckCircle2 } from "lucide-react";
+import { Pencil, FileText, Download, CheckCircle2, Trash2 } from "lucide-react";
 import { signoffDoc } from "@/lib/actions";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
@@ -37,7 +37,12 @@ function fmtCell(v: unknown): string {
   return s;
 }
 
-export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle";
+export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle" | "delete";
+
+export type DeleteConfig = {
+  /** bound server action — receives row id */
+  onDelete: (id: string) => Promise<unknown>;
+};
 
 export type ToggleConfig = {
   /** boolean row field to flip, e.g. "disabled" */
@@ -223,6 +228,32 @@ function ToggleCell({ data, config }: { data: Record<string, unknown>; config: T
   );
 }
 
+function DeleteCell({ data, config }: { data: Record<string, unknown>; config: DeleteConfig }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  if (!data.deletable) return null;
+  return (
+    <button
+      disabled={busy}
+      title="Delete"
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (!confirm("Delete this record? This cannot be undone.")) return;
+        setBusy(true);
+        try {
+          await config.onDelete(String(data.id));
+          router.refresh();
+        } finally {
+          setBusy(false);
+        }
+      }}
+      className="text-red-600 hover:text-red-500 disabled:opacity-50"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
+  );
+}
+
 function ActionsCell({
   data,
   actions,
@@ -230,6 +261,7 @@ function ActionsCell({
   signoff,
   workflow,
   toggle,
+  deleteConfig,
   onNavigate,
 }: {
   data: unknown;
@@ -238,6 +270,7 @@ function ActionsCell({
   signoff?: SignoffConfig;
   workflow?: WorkflowConfig;
   toggle?: ToggleConfig;
+  deleteConfig?: DeleteConfig;
   onNavigate: (id: string) => void;
 }) {
   const row = data as Record<string, unknown> & { id?: string; files?: { name?: string }[] };
@@ -259,6 +292,7 @@ function ActionsCell({
       {actions.includes("signoff") && signoff && <SignoffCell data={row} config={signoff} />}
       {actions.includes("workflow") && workflow && <WorkflowCell data={row} config={workflow} />}
       {actions.includes("toggle") && toggle && <ToggleCell data={row} config={toggle} />}
+      {actions.includes("delete") && deleteConfig && <DeleteCell data={row} config={deleteConfig} />}
     </div>
   );
 }
@@ -272,6 +306,7 @@ export function DataGrid({
   signoff,
   workflow,
   toggle,
+  deleteConfig,
   rowStyleRules,
   pageSize,
   heightClass = "h-[600px]",
@@ -290,6 +325,8 @@ export function DataGrid({
   workflow?: WorkflowConfig;
   /** checkbox toggle bound to a boolean row field (e.g. user disabled) */
   toggle?: ToggleConfig;
+  /** trash button on rows flagged deletable (bound server action, serializable) */
+  deleteConfig?: DeleteConfig;
   /** serializable row style rules: when row[field] === when, apply style (e.g. pink disabled rows) */
   rowStyleRules?: { field: string; when: unknown; style: Record<string, string> }[];
   /** rows per pagination page (default 20) */
@@ -299,8 +336,8 @@ export function DataGrid({
 }) {
   const router = useRouter();
   const go = (id: string) => hrefPattern && router.push(hrefPattern.replace("{id}", id));
-  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0);
-  const actionWidth = rowActions?.includes("workflow") ? 170 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
+  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0);
+  const actionWidth = rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
   const cols: ColDef[] = [
     ...(rowActions?.length
       ? [{
@@ -315,7 +352,7 @@ export function DataGrid({
           resizable: false,
           suppressMovable: true,
           cellRenderer: (p: ICellRendererParams) => (
-            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} onNavigate={go} />
+            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} deleteConfig={deleteConfig} onNavigate={go} />
           ),
         }]
       : []),

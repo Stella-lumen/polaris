@@ -20,6 +20,7 @@ const adminItems = [
   { href: "/admin/declarations", label: "Declarations", icon: FileCheck2 },
   { href: "/admin/delegated-preparers", label: "Delegated Preparers", icon: UserRoundCheck },
   { href: "/admin/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/admin/api-docs", label: "API Documentation", icon: FileText },
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: ScrollText },
   { href: "/admin/sent-emails", label: "Sent Emails", icon: Mail },

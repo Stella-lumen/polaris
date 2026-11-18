@@ -61,6 +61,17 @@ model GuidingDocument {
   id String   @id @default(ulid())
   name String?
   description String?
+  category String?
+  version String?
+  version_no Int @default(1)
+  effective_date DateTime?
+  review_date DateTime?
+  approved_by String?
+  approved_date DateTime?
+  view_roles Json?
+  edit_roles Json?
+  engagement_ids Json?
+  text_extract String?
   files Json
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
@@ -829,6 +840,7 @@ model StoredFile {
   data Bytes?
   entity_type String?
   entity_id String?
+  view_roles Json?
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
@@ -1183,4 +1195,26 @@ model TemplateVersion {
   approved_by String?
   approved_date DateTime?
   @@map("template_version")
+}
+
+model DocumentAcknowledgement {
+  id String   @id @default(ulid())
+  document_id String?
+  user_id String?
+  acked_at DateTime?
+  @@map("document_acknowledgement")
+}
+
+model DocumentVersion {
+  id String   @id @default(ulid())
+  document_id String?
+  version_no Int?
+  file_id String?
+  effective_date DateTime?
+  review_date DateTime?
+  approved_by String?
+  approved_date DateTime?
+  uploaded_by String?
+  created_at DateTime?
+  @@map("document_version")
 }

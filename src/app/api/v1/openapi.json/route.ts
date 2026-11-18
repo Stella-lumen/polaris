@@ -98,6 +98,23 @@ const spec = {
         },
       },
     },
+    "/documents": {
+      get: {
+        tags: ["Documents"],
+        summary: "List guiding documents with category, version, approval and engagement links",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "category", in: "query", schema: { type: "string", enum: ["standards", "charter", "policy", "legislation", "procedure", "other"] } },
+          { name: "search", in: "query", schema: { type: "string" }, description: "Name, description or contents" },
+        ],
+        responses: {
+          "200": { description: "Documents with version, effective/review dates, approval and linked engagements. Scope: documents:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks documents:read" },
+        },
+      },
+    },
     "/audit-plans": listGet("Planning", "List annual audit plans", "audit-plan:read"),
     "/risk-assessments": {
       get: {

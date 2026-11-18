@@ -1403,3 +1403,26 @@ CREATE TABLE IF NOT EXISTS "template_version" (
   "approved_by" TEXT,
   "approved_date" TIMESTAMPTZ
 );
+
+-- Guiding document repository (additive)
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "category" TEXT;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "version" TEXT;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "version_no" INT DEFAULT 1;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "effective_date" TIMESTAMPTZ;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "review_date" TIMESTAMPTZ;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "view_roles" JSONB;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "edit_roles" JSONB;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "engagement_ids" JSONB;
+ALTER TABLE "guiding_document" ADD COLUMN IF NOT EXISTS "text_extract" TEXT;
+ALTER TABLE "stored_file" ADD COLUMN IF NOT EXISTS "view_roles" JSONB;
+
+CREATE TABLE IF NOT EXISTS "document_acknowledgement" (
+  "id" TEXT PRIMARY KEY, "document_id" TEXT, "user_id" TEXT, "acked_at" TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS "document_version" (
+  "id" TEXT PRIMARY KEY, "document_id" TEXT, "version_no" INT, "file_id" TEXT,
+  "effective_date" TIMESTAMPTZ, "review_date" TIMESTAMPTZ,
+  "approved_by" TEXT, "approved_date" TIMESTAMPTZ, "uploaded_by" TEXT, "created_at" TIMESTAMPTZ
+);

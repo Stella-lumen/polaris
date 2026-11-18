@@ -11,7 +11,7 @@ async function scope() {
   return { organization_id: DEMO_ORGANIZATION_ID, created_by: uid, updated_by: uid };
 }
 
-async function logAudit(table: string, recordId: string, op: string, values: unknown) {
+export async function logAudit(table: string, recordId: string, op: string, values: unknown) {
   const uid = await actorId();
   await prisma.auditLog.create({
     data: {
@@ -1728,4 +1728,104 @@ export async function startWorkingPaperFromTemplate(engagementId: string, formDa
   });
   await logAudit("Working Papers", wp.id, "INSERT", { template: tpl.name, by: user.id });
   revalidatePath(`/engagements/${engagementId}/working-papers`);
+}
+
+// ---------- guiding documents ----------
+const ALL_ROLES = ["org:admin", "org:chief_audit_executive", "org:member"];
+
+export async function updateGuidingDocument(id: string, formData: FormData) {
+  const user = await requireUser();
+  const doc = await prisma.guidingDocument.findUnique({ where: { id } });
+  if (!doc) throw new Error("Document not found");
+  const edits = Array.isArray(doc.edit_roles) && (doc.edit_roles as string[]).length
+    ? (doc.edit_roles as string[]).includes(user.role ?? "")
+    : true;
+  if (!edits && user.role !== "org:admin") throw new Error("You do not have edit access to this document");
+  const viewRoles = formData.getAll("view_roles").map(String).filter(Boolean);
+  const editRoles = formData.getAll("edit_roles").map(String).filter(Boolean);
+  const engIds = formData.getAll("engagements").map(String).filter(Boolean);
+  await prisma.guidingDocument.update({
+    where: { id },
+    data: {
+      name: str(formData.get("name")) ?? doc.name,
+      description: str(formData.get("description")),
+      category: str(formData.get("category")) ?? doc.category,
+      version: str(formData.get("version")) ?? doc.version,
+      effective_date: formData.get("effective_date") ? new Date(String(formData.get("effective_date"))) : doc.effective_date,
+      review_date: formData.get("review_date") ? new Date(String(formData.get("review_date"))) : doc.review_date,
+      view_roles: viewRoles.length ? viewRoles : ALL_ROLES,
+      edit_roles: editRoles,
+      engagement_ids: engIds,
+      updated_by: user.id, updated_at: new Date(),
+    },
+  });
+  // propagate view rules to its files
+  await prisma.storedFile.updateMany({
+    where: { entity_type: "guiding_document", entity_id: id },
+    data: { view_roles: viewRoles.length ? viewRoles : ALL_ROLES },
+  });
+  await logAudit("Guiding Documents", id, "UPDATE", { name: doc.name, by: user.id });
+  revalidatePath("/guiding-documents");
+}
+
+export async function uploadDocumentVersion(id: string, formData: FormData) {
+  const user = await requireUser();
+  const doc = await prisma.guidingDocument.findUnique({ where: { id } });
+  if (!doc) throw new Error("Document not found");
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) throw new Error("Choose a file to upload");
+  const f = files[0];
+  const nextV = (doc.version_no ?? 1) + 1;
+  const rec = await prisma.storedFile.create({
+    data: {
+      ...(await scope()), name: f.name, mime_type: f.type || null, size: f.size,
+      data: Buffer.from(await f.arrayBuffer()),
+      entity_type: "guiding_document", entity_id: id,
+      view_roles: doc.view_roles ?? ALL_ROLES,
+    },
+  });
+  await prisma.documentVersion.create({
+    data: { document_id: id, version_no: nextV, file_id: rec.id, effective_date: doc.effective_date, review_date: doc.review_date, uploaded_by: user.id, created_at: new Date() },
+  });
+  await prisma.guidingDocument.update({ where: { id }, data: { version_no: nextV, version: str(formData.get("version")) ?? String(nextV), updated_by: user.id, approved_by: null, approved_date: null } });
+  await logAudit("Guiding Documents", id, "UPDATE", { new_version: nextV, file: f.name, by: user.id });
+  revalidatePath("/guiding-documents");
+}
+
+export async function approveGuidingDocument(id: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve documents");
+  const doc = await prisma.guidingDocument.findUnique({ where: { id } });
+  if (!doc) throw new Error("Document not found");
+  if (doc.updated_by === user.id) throw new Error("The person who last edited a document cannot approve it");
+  await prisma.guidingDocument.update({ where: { id }, data: { approved_by: user.id, approved_date: new Date() } });
+  await logAudit("Guiding Documents", id, "APPROVE", { name: doc.name, by: user.id });
+  revalidatePath("/guiding-documents");
+}
+
+export async function acknowledgeDocument(id: string) {
+  const user = await requireUser();
+  const ex = await prisma.documentAcknowledgement.findFirst({ where: { document_id: id, user_id: user.id } });
+  if (!ex) {
+    await prisma.documentAcknowledgement.create({ data: { document_id: id, user_id: user.id, acked_at: new Date() } });
+    const doc = await prisma.guidingDocument.findUnique({ where: { id }, select: { name: true } });
+    await logAudit("Guiding Documents", id, "ACKNOWLEDGE", { name: doc?.name, by: user.id });
+  }
+  revalidatePath("/guiding-documents");
+}
+
+export async function bulkCreateGuidingDocuments(formData: FormData) {
+  const user = await requireUser();
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) throw new Error("Choose one or more files");
+  const category = str(formData.get("category")) ?? "OTHER";
+  const b = await scope();
+  for (const f of files) {
+    const doc = await prisma.guidingDocument.create({ data: { ...b, name: f.name.replace(/\.[^.]+$/, ""), description: `Uploaded ${new Date().toISOString().slice(0, 10)}`, category, files: [] } });
+    await prisma.storedFile.create({
+      data: { ...b, name: f.name, mime_type: f.type || null, size: f.size, data: Buffer.from(await f.arrayBuffer()), entity_type: "guiding_document", entity_id: doc.id, view_roles: ALL_ROLES },
+    });
+    await logAudit("Guiding Documents", doc.id, "INSERT", { name: doc.name, file: f.name, by: user.id });
+  }
+  revalidatePath("/guiding-documents");
 }

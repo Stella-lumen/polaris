@@ -71,12 +71,16 @@ export default async function PlanningPage({
             <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-800">
               Planning approved by {approver ? `${approver.first_name} ${approver.last_name}` : "a supervisor"} on {engagement.planning_approved_date.toISOString().slice(0, 10)}
             </span>
-          ) : user && canAuthorise(user) ? (
+          ) : user && canAuthorise(user) && engagement.prepared_by_id !== user.id ? (
             <form action={approveEngagementPlanning.bind(null, engagement_id)}>
               <button className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground">Approve planning</button>
             </form>
           ) : (
-            <span className="text-xs text-muted-foreground">Awaiting supervisor approval</span>
+            <span className="text-xs text-muted-foreground">
+              {user && engagement.prepared_by_id === user.id
+                ? "Awaiting approval — you prepared this engagement, so a different supervisor must approve the planning"
+                : "Awaiting supervisor approval"}
+            </span>
           )}
         </div>
         <form action={updateEngagementScope.bind(null, engagement_id)} className="mt-3 grid gap-3">

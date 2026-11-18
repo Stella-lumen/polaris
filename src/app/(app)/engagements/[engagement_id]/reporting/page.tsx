@@ -71,12 +71,16 @@ export default async function ReportingPage({
             <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-800">
               Report approved by {reportApprover ? `${reportApprover.first_name} ${reportApprover.last_name}` : "a supervisor"} on {engagement.report_approved_date.toISOString().slice(0, 10)}
             </span>
-          ) : user && canAuthorise(user) ? (
+          ) : user && canAuthorise(user) && engagement.prepared_by_id !== user.id ? (
             <form action={approveEngagementReport.bind(null, engagement_id)}>
               <button className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground">Approve report</button>
             </form>
           ) : (
-            <span className="text-xs text-muted-foreground">Awaiting supervisor approval</span>
+            <span className="text-xs text-muted-foreground">
+              {user && engagement.prepared_by_id === user.id
+                ? "Awaiting approval — you prepared this engagement, so a different supervisor must approve the report"
+                : "Awaiting supervisor approval"}
+            </span>
           )}
         </div>
       </div>

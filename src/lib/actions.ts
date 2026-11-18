@@ -1090,6 +1090,8 @@ export async function updateEngagementScope(engagementId: string, formData: Form
 export async function approveEngagementPlanning(engagementId: string) {
   const user = await requireUser();
   if (!canAuthorise(user)) throw new Error("Only a supervisor can approve the planning");
+  const e = await prisma.engagement.findUnique({ where: { id: engagementId } });
+  if (e?.prepared_by_id === user.id) throw new Error("The preparer cannot approve their own planning");
   await prisma.engagement.update({ where: { id: engagementId }, data: { planning_approved_by: user.id, planning_approved_date: new Date() } });
   await logAudit("Engagements", engagementId, "APPROVE_PLANNING", { by: user.id });
   revalidatePath(`/engagements/${engagementId}/planning`);

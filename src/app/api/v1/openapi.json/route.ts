@@ -116,6 +116,20 @@ const spec = {
       },
     },
     "/audit-plans": listGet("Planning", "List annual audit plans", "audit-plan:read"),
+    "/audit-plans/{id}": {
+      get: {
+        tags: ["Planning"],
+        summary: "Audit plan detail: status, approvals, planned engagements and risk coverage",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "Plan with status, version, preparer/authoriser, committee sign-off, planned engagements (quarter, hours, budget) and covered risks. Scope: audit-plan:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks audit-plan:read" },
+          "404": { description: "Not found" },
+        },
+      },
+    },
     "/risk-assessments": {
       get: {
         tags: ["Risk"],

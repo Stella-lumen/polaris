@@ -1829,3 +1829,76 @@ export async function bulkCreateGuidingDocuments(formData: FormData) {
   }
   revalidatePath("/guiding-documents");
 }
+
+// ---------- annual audit plan lifecycle ----------
+const STATUS_LABEL_PLAN: Record<string, string> = { DRAFT: "Draft", SUBMITTED: "Submitted", AUTHORISED: "Authorised", CLOSED: "Closed" };
+
+export async function submitPlan(id: string) {
+  const user = await requireUser();
+  const plan = await prisma.annualAuditPlan.findUnique({ where: { id } });
+  if (!plan) throw new Error("Plan not found");
+  await prisma.annualAuditPlan.update({ where: { id }, data: { status: "SUBMITTED", updated_by: user.id } });
+  await logAudit("Audit plans", id, "UPDATE", { status: "Submitted for approval", by: user.id });
+  revalidatePath("/annual-audit-plan");
+  revalidatePath(`/annual-audit-plan/${id}`);
+}
+
+export async function authorisePlan(id: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can authorise an audit plan");
+  const plan = await prisma.annualAuditPlan.findUnique({ where: { id } });
+  if (!plan) throw new Error("Plan not found");
+  if (plan.prepared_by_id === user.id) throw new Error("The person who prepared this plan cannot authorise it — a different supervisor must approve");
+  const comment = str(formData.get("comment"));
+  await prisma.annualAuditPlan.update({ where: { id }, data: { status: "AUTHORISED", authorised_by_id: user.id, authorised_date: new Date(), updated_by: user.id } });
+  await logAudit("Audit plans", id, "APPROVE", { name: plan.name, by: user.id, comment });
+  revalidatePath("/annual-audit-plan");
+  revalidatePath(`/annual-audit-plan/${id}`);
+}
+
+export async function committeeSignOff(id: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can record committee sign-off");
+  const comment = str(formData.get("comment"));
+  await prisma.annualAuditPlan.update({ where: { id }, data: { committee_signed_by: user.id, committee_signed_date: new Date(), updated_by: user.id } });
+  await logAudit("Audit plans", id, "APPROVE", { step: "Audit committee sign-off", by: user.id, comment });
+  revalidatePath(`/annual-audit-plan/${id}`);
+}
+
+export async function revisePlan(id: string, formData: FormData) {
+  const user = await requireUser();
+  const reason = str(formData.get("reason"));
+  if (!reason) throw new Error("Give a reason for revising this plan");
+  const plan = await prisma.annualAuditPlan.findUnique({ where: { id }, include: { plannedEngagements_annual_audit_plan: { where: { deleted: false } } } });
+  if (!plan) throw new Error("Plan not found");
+  const nextV = (plan.version_no ?? 1) + 1;
+  await prisma.planVersion.create({
+    data: { plan_id: id, version_no: plan.version_no ?? 1, snapshot: plan as object, revised_by: user.id, revision_reason: reason, created_at: new Date() },
+  });
+  await prisma.annualAuditPlan.update({ where: { id }, data: { version_no: nextV, status: "DRAFT", authorised_by_id: null, authorised_date: null, committee_signed_by: null, committee_signed_date: null, revision_reason: reason, updated_by: user.id } });
+  await logAudit("Audit plans", id, "UPDATE", { revised_to_version: nextV, reason, by: user.id });
+  revalidatePath(`/annual-audit-plan/${id}`);
+}
+
+/** Add an uncovered risk to a plan as a planned engagement (from the plan detail page). */
+export async function addRiskToPlanDetail(planId: string, riskId: string, formData: FormData) {
+  const user = await requireUser();
+  const risk = await prisma.riskAssessment.findUnique({ where: { id: riskId } });
+  if (!risk) throw new Error("Risk not found");
+  const pe = await prisma.plannedEngagement.create({
+    data: {
+      ...(await scope()),
+      annual_audit_plan_id: planId,
+      name: `Audit of ${risk.auditable_entity ?? "risk area"}`,
+      objectives: `Audit of controls over ${risk.auditable_entity ?? "this risk"}`,
+      quarter: str(formData.get("quarter")),
+      planned_hours: formData.get("planned_hours") ? Number(formData.get("planned_hours")) : null,
+      lead_user_id: str(formData.get("lead_user_id")),
+      risk_id: riskId,
+      status: "PLANNED",
+    },
+  });
+  await prisma.riskAssessment.update({ where: { id: riskId }, data: { linked_planned_engagement_id: pe.id } });
+  await logAudit("Audit plans", planId, "UPDATE", { added_planned_engagement: pe.name, from_risk: risk.auditable_entity, by: user.id });
+  revalidatePath(`/annual-audit-plan/${planId}`);
+}

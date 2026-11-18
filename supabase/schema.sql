@@ -1426,3 +1426,20 @@ CREATE TABLE IF NOT EXISTS "document_version" (
   "effective_date" TIMESTAMPTZ, "review_date" TIMESTAMPTZ,
   "approved_by" TEXT, "approved_date" TIMESTAMPTZ, "uploaded_by" TEXT, "created_at" TIMESTAMPTZ
 );
+
+-- Risk-based audit plan (additive)
+ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
+ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "committee_signed_by" TEXT;
+ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "committee_signed_date" TIMESTAMPTZ;
+ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "revision_reason" TEXT;
+ALTER TABLE "annual_audit_plan" ADD COLUMN IF NOT EXISTS "version_no" INT DEFAULT 1;
+ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "planned_hours" NUMERIC;
+ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "quarter" TEXT;
+ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'PLANNED';
+ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "lead_user_id" TEXT;
+ALTER TABLE "planned_engagement" ADD COLUMN IF NOT EXISTS "risk_id" TEXT;
+
+CREATE TABLE IF NOT EXISTS "plan_version" (
+  "id" TEXT PRIMARY KEY, "plan_id" TEXT, "version_no" INT, "snapshot" JSONB,
+  "revised_by" TEXT, "revision_reason" TEXT, "created_at" TIMESTAMPTZ
+);

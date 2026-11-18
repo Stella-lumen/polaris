@@ -42,6 +42,11 @@ model AnnualAuditPlan {
   r_authorised_by   User? @relation("authorised_by", fields: [authorised_by_id], references: [id])
   authorised_by_id   String?
   authorised_date DateTime?
+  status String? @default("DRAFT")
+  committee_signed_by String?
+  committee_signed_date DateTime?
+  revision_reason String?
+  version_no Int @default(1)
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   disabled Boolean  @default(false)
@@ -103,6 +108,11 @@ model PlannedEngagement {
   actual_start_date DateTime?
   actual_end_date DateTime?
   actual_budget Decimal?
+  planned_hours Decimal?
+  quarter String?
+  status String? @default("PLANNED")
+  lead_user_id String?
+  risk_id String?
   r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
   prepared_by_id   String?
   prepared_date DateTime?
@@ -1217,4 +1227,15 @@ model DocumentVersion {
   uploaded_by String?
   created_at DateTime?
   @@map("document_version")
+}
+
+model PlanVersion {
+  id String   @id @default(ulid())
+  plan_id String?
+  version_no Int?
+  snapshot Json?
+  revised_by String?
+  revision_reason String?
+  created_at DateTime?
+  @@map("plan_version")
 }

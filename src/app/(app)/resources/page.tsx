@@ -52,10 +52,12 @@ export default async function ResourcesPage() {
       <DataGrid
         heightClass="h-[280px]"
         rows={timeEntries.map((t) => ({
-          ...t,
+          id: t.id,
           work_date: t.work_date?.toISOString().slice(0, 10),
           auditor: t.r_user ? `${t.r_user.first_name} ${t.r_user.last_name}` : "",
+          r_engagement: { engagement_name: t.r_engagement?.engagement_name },
           hours: t.hours != null ? Number(t.hours) : null,
+          description: t.description,
         })) as unknown as object[]}
         colDefs={[
           { field: "work_date", headerName: "Date" },
@@ -83,9 +85,11 @@ export default async function ResourcesPage() {
       <DataGrid
         heightClass="h-[280px]"
         rows={expenses.map((e) => ({
-          ...e,
+          id: e.id,
           expense_date: e.expense_date?.toISOString().slice(0, 10),
           claimed_by: e.r_user ? `${e.r_user.first_name} ${e.r_user.last_name}` : "",
+          r_engagement: { engagement_name: e.r_engagement?.engagement_name },
+          description: e.description,
           amount: e.amount != null ? Number(e.amount) : null,
         })) as unknown as object[]}
         colDefs={[

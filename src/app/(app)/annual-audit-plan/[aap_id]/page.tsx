@@ -25,7 +25,19 @@ export default async function AapDetailPage({
       <p className="text-muted-foreground">{plan.description} · {plan.r_period?.name}</p>
       <h2 className="text-lg font-medium">Planned Engagements</h2>
       <DataGrid
-        rows={planned as unknown as object[]}
+        rows={planned.map((p) => ({
+          id: p.id,
+          reference: p.reference,
+          name: p.name,
+          r_engagement_type: { name: p.r_engagement_type?.name },
+          objectives: p.objectives,
+          scope: p.scope,
+          location: p.location,
+          planned_start_date: p.planned_start_date?.toISOString().slice(0, 10),
+          planned_end_date: p.planned_end_date?.toISOString().slice(0, 10),
+          planned_budget: p.planned_budget != null ? Number(p.planned_budget) : null,
+          authorised_date: p.authorised_date?.toISOString().slice(0, 10),
+        })) as unknown as object[]}
         colDefs={[
           { field: "reference", headerName: "Reference" },
           { field: "name", headerName: "Name", flex: 2 },

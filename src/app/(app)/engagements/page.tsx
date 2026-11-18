@@ -41,7 +41,16 @@ export default async function EngagementsPage() {
         </div>
       </div>
       <DataGrid
-        rows={engagements as unknown as object[]}
+        rows={engagements.map((e) => ({
+          id: e.id,
+          engagement_name: e.engagement_name,
+          engagement_number: e.engagement_number,
+          r_engagement_type: { name: e.r_engagement_type?.name },
+          start_date: e.start_date?.toISOString().slice(0, 10),
+          end_date: e.end_date?.toISOString().slice(0, 10),
+          engagement_budget: e.engagement_budget != null ? Number(e.engagement_budget) : null,
+          engagement_spend: e.engagement_spend != null ? Number(e.engagement_spend) : null,
+        })) as unknown as object[]}
         hrefPattern="/engagements/{id}/dashboard"
         rowActions={["edit"]}
         colDefs={[

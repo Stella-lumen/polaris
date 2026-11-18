@@ -45,7 +45,11 @@ export default async function FollowUpPage() {
       </div>
       <DataGrid
         rows={rows.map((a) => ({
-          ...a,
+          id: a.id,
+          action_description: a.action_description,
+          status: a.status,
+          progress: a.progress,
+          r_finding: { detailed_finding: a.r_finding?.detailed_finding },
           owner_name: a.r_owner ? `${a.r_owner.first_name} ${a.r_owner.last_name}` : "",
           status_label: (a.status ?? "").replaceAll("_", " "),
           due_date: a.due_date?.toISOString().slice(0, 10),

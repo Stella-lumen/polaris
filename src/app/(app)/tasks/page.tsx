@@ -38,7 +38,13 @@ export default async function TasksPage() {
       </div>
       <DataGrid
         rows={rows.map((t) => ({
-          ...t,
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          stage: t.stage,
+          status: t.status,
+          escalated: t.escalated,
+          r_engagement: { engagement_name: t.r_engagement?.engagement_name },
           assignee_name: t.r_assignee ? `${t.r_assignee.first_name} ${t.r_assignee.last_name}` : "",
           status_label: (t.status ?? "").replaceAll("_", " "),
           due_date: t.due_date?.toISOString().slice(0, 10),

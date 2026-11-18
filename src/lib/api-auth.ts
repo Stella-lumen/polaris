@@ -74,19 +74,8 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
 /** Logs API auth failures to the audit trail — never the raw key. Fire-and-forget. */
 async function auditAuthFail(requestId: string, keyId: string | null, reason: string) {
   try {
-    await prisma.auditLog.create({
-      data: {
-        organization_id: DEMO_ORGANIZATION_ID,
-        schema_name: "public",
-        table_name: "Api Keys",
-        record_id: keyId ?? "unknown",
-        operation_type: "AUTH_FAIL",
-        timestamp: new Date(),
-        original_values: {},
-        new_values: { reason, request_id: requestId },
-        query: "api-auth",
-      },
-    });
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit("Api Keys", keyId ?? "unknown", "AUTH_FAIL", { reason, request_id: requestId }, { system: true });
   } catch { /* auditing must never break auth */ }
 }
 

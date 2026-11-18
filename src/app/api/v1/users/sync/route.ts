@@ -1,6 +1,7 @@
 import { apiKeyAuth, apiErr } from "@/lib/api-auth";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { logAudit } from "@/lib/audit";
 import { NextResponse } from "next/server";
 
 /**
@@ -91,15 +92,7 @@ export async function POST(req: Request) {
       });
       seenIds.add(row.id);
       created++;
-      await prisma.auditLog.create({
-        data: {
-          organization_id: auth.org, table_name: "Users", record_id: row.id,
-          operation_type: "INSERT", query: "directory-sync",
-          original_values: {},
-          new_values: { email, role: target.role, source: "directory-sync", ad_group: u.ad_group },
-          timestamp: now,
-        },
-      });
+      await logAudit("Users", row.id, "INSERT", { email, role: target.role, source: "directory-sync", ad_group: u.ad_group }, { system: true, note: "directory-sync" });
       continue;
     }
     seenIds.add(existing.id);
@@ -113,14 +106,7 @@ export async function POST(req: Request) {
     updated++;
     const oldVals = Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.old])) as Prisma.InputJsonValue;
     const newVals = { ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v.new])), source: "directory-sync" } as Prisma.InputJsonValue;
-    await prisma.auditLog.create({
-      data: {
-        organization_id: auth.org, table_name: "Users", record_id: existing.id,
-        operation_type: "UPDATE", query: "directory-sync",
-        original_values: oldVals, new_values: newVals,
-        timestamp: now,
-      },
-    });
+    await logAudit("Users", existing.id, "UPDATE", newVals, { system: true, originalValues: oldVals, note: "directory-sync" });
   }
 
   if (body.deactivate_missing) {
@@ -135,14 +121,7 @@ export async function POST(req: Request) {
     });
     for (const s of stale) {
       await prisma.user.update({ where: { id: s.id }, data: { disabled: true, updated_at: now, updated_by: "directory-sync" } });
-      await prisma.auditLog.create({
-        data: {
-          organization_id: auth.org, table_name: "Users", record_id: s.id,
-          operation_type: "UPDATE", query: "directory-sync",
-          original_values: { disabled: false }, new_values: { disabled: true, source: "directory-sync" },
-          timestamp: now,
-        },
-      });
+      await logAudit("Users", s.id, "UPDATE", { disabled: true, source: "directory-sync" }, { system: true, originalValues: { disabled: false }, note: "directory-sync" });
     }
     deactivated = stale.length;
   }

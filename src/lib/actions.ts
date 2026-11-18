@@ -12,20 +12,8 @@ async function scope() {
 }
 
 export async function logAudit(table: string, recordId: string, op: string, values: unknown) {
-  const uid = await actorId();
-  await prisma.auditLog.create({
-    data: {
-      organization_id: DEMO_ORGANIZATION_ID,
-      schema_name: "public",
-      table_name: table,
-      record_id: recordId,
-      operation_type: op,
-      user_id: uid,
-      timestamp: new Date(),
-      original_values: {},
-      new_values: JSON.parse(JSON.stringify(values)),
-    },
-  });
+  const { logAudit: write } = await import("@/lib/audit");
+  await write(table, recordId, op, values);
 }
 
 const str = (v: unknown) => String(v ?? "").trim() || null;
@@ -1996,4 +1984,19 @@ export async function runEscalationNow() {
   await logAudit("Escalation rules", "engine", "NOTIFICATION", { message: `Escalation engine run manually — ${r.sent} notification${r.sent === 1 ? "" : "s"} queued` });
   revalidatePath("/admin/sent-emails");
   revalidatePath("/admin/sent-emails/settings");
+}
+
+export async function verifyAuditTrail() {
+  const user = await requireUser();
+  const { canAuthorise } = await import("@/lib/auth");
+  if (!canAuthorise(user)) throw new Error("Only an administrator can verify the audit trail.");
+  const { prisma } = await import("@/lib/db");
+  const { verifyChain } = await import("@/lib/audit-chain");
+  const rows = await prisma.auditLog.findMany({ orderBy: [{ timestamp: "asc" }, { id: "asc" }] });
+  const r = verifyChain(rows);
+  const message = r.ok
+    ? `The audit trail is intact — ${r.verified} protected entries verified${r.unprotected ? `, ${r.unprotected} older entries predate tamper protection` : ""}.`
+    : `The audit trail is broken at entry ${r.firstBadIndex + 1} — ${r.reason}`;
+  await logAudit("Security", "audit-trail", "UPDATE", { message: `Verified the audit trail — ${message}` });
+  return { ok: r.ok, message };
 }

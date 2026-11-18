@@ -614,6 +614,11 @@ CREATE TABLE "api_key" (
 CREATE TABLE "audit_log" (
     "id" TEXT NOT NULL,
     "schema_name" TEXT,
+    "fingerprint" TEXT,
+    "ip_address" TEXT,
+    "session_id" TEXT,
+    "record_label" TEXT,
+    "actor_label" TEXT,
     "table_name" TEXT,
     "record_id" TEXT,
     "operation_type" TEXT,
@@ -1457,3 +1462,14 @@ ALTER TABLE "timesheet" ADD CONSTRAINT "timesheet_user_id_fkey" FOREIGN KEY ("us
 -- AddForeignKey
 ALTER TABLE "working_paper" ADD CONSTRAINT "working_paper_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
+
+-- Tamper protection: audit_log is add-only -- no UPDATE or DELETE, even by
+-- privileged roles. To maintain the table a superuser must first drop these
+-- triggers; that action is outside the app and visible in the database log.
+CREATE OR REPLACE FUNCTION audit_log_no_modify() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_log entries cannot be edited or deleted';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON "audit_log" FOR EACH ROW EXECUTE FUNCTION audit_log_no_modify();
+CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON "audit_log" FOR EACH ROW EXECUTE FUNCTION audit_log_no_modify();

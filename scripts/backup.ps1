@@ -1,11 +1,11 @@
-# Polaris daily backup — tender requirement: daily backups, 12-month retention.
+# Polaris daily backup — tender requirement: daily backups, 3-year retention (audit-log contract period).
 # Schedule with: schtasks /create /tn "Polaris Backup" /tr "powershell -File backup.ps1" /sc daily /st 02:00
 param(
   [string]$DbHost = "localhost",
   [string]$DbName = "polaris",
   [string]$DbUser = "polaris",
   [string]$BackupDir = ".\backups",
-  [int]$RetentionDays = 365
+  [int]$RetentionDays = 1095
 )
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"

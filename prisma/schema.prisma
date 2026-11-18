@@ -710,6 +710,11 @@ model ApiKey {
 model AuditLog {
   id String   @id @default(ulid())
   schema_name String?
+  fingerprint String?
+  ip_address String?
+  session_id String?
+  record_label String?
+  actor_label String?
   table_name String?
   record_id String?
   operation_type String?

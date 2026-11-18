@@ -187,6 +187,25 @@ const spec = {
         },
       },
     },
+    "/audit-logs": {
+      get: {
+        tags: ["Audit"],
+        summary: "List audit log entries (add-only trail; never returns secrets)",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "operation", in: "query", schema: { type: "string" }, description: "e.g. UPDATE, LOGIN, NOTIFICATION" },
+          { name: "module", in: "query", schema: { type: "string" }, description: "Module name e.g. Tasks, Users" },
+          { name: "from", in: "query", schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date" } },
+        ],
+        responses: {
+          "200": { description: "Audit entries with timestamp, module, operation, record label and actor. Scope: auditlogs:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks auditlogs:read" },
+        },
+      },
+    },
     "/escalation-rules": {
       get: {
         tags: ["Notifications"],

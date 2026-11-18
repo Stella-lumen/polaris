@@ -15,6 +15,7 @@ const SCOPES: [string, string][] = [
   ["documents:read", "Guiding documents and versions"],
   ["templates:read", "Document templates and field definitions"],
   ["notifications:read", "Notification outbox and escalation rules"],
+  ["auditlogs:read", "Audit trail entries"],
   ["users:sync", "Directory provisioning (POST only)"],
 ];
 
@@ -33,6 +34,7 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/templates", "Document templates"],
   ["GET", "/notifications", "Notification outbox"],
   ["GET", "/escalation-rules", "Escalation timings"],
+  ["GET", "/audit-logs", "Audit trail entries"],
   ["POST", "/users/sync", "Directory user provisioning"],
 ];
 

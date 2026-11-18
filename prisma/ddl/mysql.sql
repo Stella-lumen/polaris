@@ -611,6 +611,11 @@ CREATE TABLE `api_key` (
 CREATE TABLE `audit_log` (
     `id` VARCHAR(191) NOT NULL,
     `schema_name` VARCHAR(191) NULL,
+    `fingerprint` VARCHAR(191) NULL,
+    `ip_address` VARCHAR(191) NULL,
+    `session_id` VARCHAR(191) NULL,
+    `record_label` VARCHAR(191) NULL,
+    `actor_label` VARCHAR(191) NULL,
     `table_name` VARCHAR(191) NULL,
     `record_id` VARCHAR(191) NULL,
     `operation_type` VARCHAR(191) NULL,

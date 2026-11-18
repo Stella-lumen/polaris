@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { ruleFires } from "@/lib/escalation-rules";
 import { deliverEmail } from "@/lib/mailer";
+import { logAudit } from "@/lib/audit";
 
 /**
  * The single shared escalation engine for tasks and corrective actions.
@@ -122,15 +123,13 @@ export async function escalateOverdueWork() {
       },
     });
     await deliverEmail(row.id);
-    await prisma.auditLog.create({
-      data: {
-        organization_id: DEMO_ORGANIZATION_ID, schema_name: "public",
-        table_name: n.kind === "task" ? "Tasks" : "Corrective Actions", record_id: n.itemId,
-        operation_type: "NOTIFICATION", timestamp: now, original_values: {},
-        new_values: { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },
-        query: "escalation-engine",
-      },
-    });
+    await logAudit(
+      n.kind === "task" ? "Tasks" : "Corrective Actions",
+      n.itemId,
+      "NOTIFICATION",
+      { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },
+      { system: true },
+    );
     sent++;
   }
 

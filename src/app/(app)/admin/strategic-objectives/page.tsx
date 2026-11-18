@@ -49,7 +49,6 @@ export default async function StrategicObjectivesPage() {
   // Per-value badge classes for the Highest rating column (band colours).
   const highestBadges: Record<string, string> = {};
   for (const r of gridRows) if (r.highest_class) highestBadges[r.highest] = r.highest_class;
-  const anySample = gridRows.some((r) => r.sample);
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,11 +71,6 @@ export default async function StrategicObjectivesPage() {
           ]}
         />
       </div>
-      {anySample && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Sample objectives. Replace with the AgriSETA strategic plan.
-        </p>
-      )}
       <DataGrid
         rows={gridRows as unknown as object[]}
         hrefPattern="/admin/strategic-objectives/{id}"
@@ -98,8 +92,8 @@ export default async function StrategicObjectivesPage() {
           { field: "name", headerName: "Objective", flex: 1.6, tooltipField: "name" },
           { field: "description", headerName: "Description", flex: 2, tooltipField: "description" },
           { field: "sample", headerName: "Flag", width: 90 },
-          { field: "linked", headerName: "Linked risks", width: 110 },
-          { field: "highest", headerName: "Highest rating", width: 130 },
+          { field: "linked", headerName: "Risks", width: 80 },
+          { field: "highest", headerName: "Top rating", width: 120 },
           { field: "coverage", headerName: "Audit coverage", flex: 1.4, tooltipField: "coverage" },
           { field: "status", headerName: "Status", width: 100 },
         ]}

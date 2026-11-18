@@ -10,8 +10,15 @@ import { fmtDate } from "@/lib/dates";
 
 export const instant = false;
 
-export default async function StrategicObjectiveDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function StrategicObjectiveDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ edit?: string }>;
+}) {
   const { id } = await params;
+  const { edit } = await searchParams;
   const [o, bands] = await Promise.all([
     prisma.strategicObjective.findFirst({
       where: { id, deleted: false, organization_id: DEMO_ORGANIZATION_ID },
@@ -50,6 +57,12 @@ export default async function StrategicObjectiveDetailPage({ params }: { params:
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{o.description ?? "Not assigned"}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/strategic-objectives/${o.id}?edit=1`}
+              className="rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium hover:bg-neutral-50"
+            >
+              Edit
+            </Link>
             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${o.disabled ? "bg-zinc-200 text-zinc-600" : "bg-emerald-100 text-emerald-800"}`}>
               {o.disabled ? "Inactive" : "Active"}
             </span>
@@ -75,6 +88,9 @@ export default async function StrategicObjectiveDetailPage({ params }: { params:
         <h2 className="text-lg font-medium">
           Linked risks — {covered} of {risks.length} in the audit plan
         </h2>
+      </div>
+
+      {edit === "1" && (
         <EditDialog
           title="Edit strategic objective"
           returnPath={`/admin/strategic-objectives/${o.id}`}
@@ -86,7 +102,7 @@ export default async function StrategicObjectiveDetailPage({ params }: { params:
             { name: "sort_order", label: "Sort order", type: "number" },
           ]}
         />
-      </div>
+      )}
 
       <DataGrid
         rows={risks.map((r) => {

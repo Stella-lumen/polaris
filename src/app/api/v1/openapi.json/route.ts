@@ -170,6 +170,23 @@ const spec = {
       },
     },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
+    "/audit-plan-periods": {
+      get: {
+        tags: ["Audit plans"],
+        summary: "List audit plan periods (financial years, quarters, special reviews)",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "type", in: "query", schema: { type: "string", enum: ["FY", "QUARTER", "SPECIAL"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["open", "closed", "archived"] } },
+        ],
+        responses: {
+          "200": { description: "Periods with type, status, dates, plan counts and plain-language warnings. Scope: audit-plan:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks audit-plan:read" },
+        },
+      },
+    },
     "/engagement-types": {
       get: {
         tags: ["Engagements"],

@@ -21,6 +21,7 @@ export function EditDialog({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const close = () => router.push(returnPath);
 
   return (
@@ -33,10 +34,15 @@ export function EditDialog({
           className="flex flex-col gap-3 p-5"
           action={async (fd) => {
             setBusy(true);
+            setError(null);
             try {
               await action(fd);
               router.push(returnPath);
               router.refresh();
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Something went wrong.";
+              if (msg.includes("NEXT_REDIRECT") || msg.includes("digest")) router.push(returnPath);
+              else setError(msg.replace(/^Error:\s*/, ""));
             } finally {
               setBusy(false);
             }
@@ -91,6 +97,9 @@ export function EditDialog({
               </label>
             );
           })}
+          {error && (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          )}
           <div className="mt-2 flex justify-end gap-2">
             <button type="button" onClick={close} className="rounded-md border border-neutral-300 px-4 py-2 text-sm">
               Close

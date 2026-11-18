@@ -14,6 +14,8 @@ model AnnualAuditPlanPeriod {
   id String   @id @default(ulid())
   name String?
   description String?
+  period_type String?
+  status String? @default("OPEN")
   start_date DateTime?
   end_date DateTime?
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])

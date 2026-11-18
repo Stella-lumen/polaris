@@ -3,6 +3,8 @@ CREATE TABLE "annual_audit_plan_period" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT,
     "description" TEXT,
+    "period_type" TEXT,
+    "status" TEXT DEFAULT 'OPEN',
     "start_date" DATETIME,
     "end_date" DATETIME,
     "organization_id" TEXT,

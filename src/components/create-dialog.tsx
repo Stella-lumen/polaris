@@ -27,6 +27,7 @@ export function CreateDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [vals, setVals] = useState<Record<string, string>>({});
 
   return (
@@ -51,10 +52,15 @@ export function CreateDialog({
               className="flex flex-col gap-3 p-5"
               action={async (fd) => {
                 setBusy(true);
+                setError(null);
                 try {
                   await action(fd);
                   setOpen(false);
                   router.refresh();
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "Something went wrong.";
+                  setError(msg.includes("NEXT_REDIRECT") || msg.includes("digest") ? null : msg.replace(/^Error:\s*/, ""));
+                  if (msg.includes("NEXT_REDIRECT") || msg.includes("digest")) setOpen(false);
                 } finally {
                   setBusy(false);
                 }
@@ -126,6 +132,9 @@ export function CreateDialog({
                     ) : null;
                   });
               })()}
+              {error && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+              )}
               <div className="mt-2 flex justify-end gap-2">
                 <button
                   type="button"

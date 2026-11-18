@@ -26,6 +26,7 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/engagement-types", "Engagement types + default-config counts"],
   ["GET", "/engagement-types/{id}", "Type defaults: templates, checklist, budget guide"],
   ["GET", "/audit-plans", "Annual audit plans"],
+  ["GET", "/audit-plan-periods", "Plan periods + warnings"],
   ["GET", "/risk-assessments", "Risk register"],
   ["GET", "/findings", "Findings + lifecycle status"],
   ["GET", "/follow-ups", "Corrective actions + overdue flags"],

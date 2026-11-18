@@ -200,6 +200,7 @@ function WorkflowCell({ data, config }: { data: Record<string, unknown>; config:
           setBusy(false);
         }
       }}
+      title={`Move to ${next.replaceAll("_", " ").toLowerCase()}`}
       className="rounded bg-orange-600 px-2 py-1 text-xs font-medium whitespace-nowrap text-white hover:bg-orange-500 disabled:opacity-50"
     >
       Mark {next.replaceAll("_", " ")}

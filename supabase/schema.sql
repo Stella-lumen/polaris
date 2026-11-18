@@ -21,6 +21,8 @@ CREATE TABLE "annual_audit_plan_period" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "name" TEXT,
     "description" TEXT,
+    "period_type" TEXT,
+    "status" TEXT DEFAULT 'OPEN',
     "start_date" TIMESTAMPTZ,
     "end_date" TIMESTAMPTZ,
     "organization_id" TEXT,
@@ -1606,3 +1608,7 @@ create trigger trg_email_setting_updated before update on "email_setting" for ea
 -- alter table "document_version" enable row level security;
 -- alter table "plan_version" enable row level security;
 -- alter table "email_setting" enable row level security;
+
+
+-- One open financial year at a time per organization
+CREATE UNIQUE INDEX "one_open_financial_year" ON "annual_audit_plan_period" ("organization_id") WHERE "period_type" = 'FY' AND "status" = 'OPEN' AND "deleted" = false;

@@ -6,6 +6,8 @@ CREATE TABLE "annual_audit_plan_period" (
     "id" TEXT NOT NULL,
     "name" TEXT,
     "description" TEXT,
+    "period_type" TEXT,
+    "status" TEXT DEFAULT 'OPEN',
     "start_date" TIMESTAMP(3),
     "end_date" TIMESTAMP(3),
     "organization_id" TEXT,
@@ -1476,3 +1478,7 @@ END;
 $$ LANGUAGE plpgsql;
 CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON "audit_log" FOR EACH ROW EXECUTE FUNCTION audit_log_no_modify();
 CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON "audit_log" FOR EACH ROW EXECUTE FUNCTION audit_log_no_modify();
+
+
+-- One open financial year at a time per organization
+CREATE UNIQUE INDEX "one_open_financial_year" ON "annual_audit_plan_period" ("organization_id") WHERE "period_type" = 'FY' AND "status" = 'OPEN' AND "deleted" = false;

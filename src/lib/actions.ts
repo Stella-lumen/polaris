@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { actorId, requireUser, requireRole, canAuthorise, hashPassword } from "@/lib/auth";
 import { API_SCOPES } from "@/lib/api-scopes";
+import { validatePeriod, canTransition, typeLabel } from "@/lib/period-validation";
 
 async function scope() {
   const uid = await actorId();
@@ -240,16 +241,97 @@ export async function createEngagementType(formData: FormData) {
 
 export async function createPeriod(formData: FormData) {
   await requireRole(["org:admin"]);
+  const input = {
+    name: str(formData.get("name")),
+    description: str(formData.get("description")),
+    period_type: str(formData.get("period_type")),
+    status: "OPEN",
+    start_date: date(formData.get("start_date")),
+    end_date: date(formData.get("end_date")),
+  };
+  const siblings = await prisma.annualAuditPlanPeriod.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID } });
+  const err = validatePeriod(input, siblings);
+  if (err) throw new Error(err);
   const p = await prisma.annualAuditPlanPeriod.create({
-    data: {
-      ...(await scope()),
-      name: str(formData.get("name")),
-      description: str(formData.get("description")),
-      start_date: date(formData.get("start_date")),
-      end_date: date(formData.get("end_date")),
-    },
+    data: { ...(await scope()), ...input },
   });
-  await logAudit("Annual Audit Plan Periods", p.id, "INSERT", p);
+  await logAudit("Annual Audit Plan Periods", p.id, "INSERT", { message: `Created period "${p.name}" (${typeLabel(p.period_type)})` });
+  revalidatePath("/admin/periods");
+}
+
+export async function updatePeriod(id: string, formData: FormData) {
+  const user = await requireRole(["org:admin"]);
+  const input = {
+    name: str(formData.get("name")),
+    description: str(formData.get("description")),
+    period_type: str(formData.get("period_type")),
+    start_date: date(formData.get("start_date")),
+    end_date: date(formData.get("end_date")),
+  };
+  const existing = await prisma.annualAuditPlanPeriod.findFirst({ where: { id, deleted: false } });
+  if (!existing) throw new Error("Period not found");
+  const siblings = await prisma.annualAuditPlanPeriod.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, id: { not: id } } });
+  const err = validatePeriod({ ...input, status: existing.status }, siblings);
+  if (err) throw new Error(err);
+  const p = await prisma.annualAuditPlanPeriod.update({ where: { id }, data: { ...input, updated_by: user.id, updated_at: new Date() } });
+  await logAudit("Annual Audit Plan Periods", id, "UPDATE", { message: `Updated period "${p.name}"` });
+  revalidatePath("/admin/periods");
+  revalidatePath(`/admin/periods/${id}`);
+}
+
+/** Close, archive or reopen a period. Plans already using it are unaffected. */
+export async function setPeriodStatus(id: string, status: string) {
+  const user = await requireRole(["org:admin"]);
+  const to = status.toUpperCase() as "OPEN" | "CLOSED" | "ARCHIVED";
+  if (!["OPEN", "CLOSED", "ARCHIVED"].includes(to)) throw new Error("Unknown status");
+  const p = await prisma.annualAuditPlanPeriod.findFirst({ where: { id, deleted: false } });
+  if (!p) throw new Error("Period not found");
+  if (!canTransition(p.status, to)) throw new Error(`Cannot move from ${(p.status ?? "OPEN").toLowerCase()} to ${to.toLowerCase()}.`);
+  if (to === "OPEN" && p.period_type === "FY") {
+    const other = await prisma.annualAuditPlanPeriod.findFirst({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, period_type: "FY", status: "OPEN", id: { not: id } } });
+    if (other) throw new Error(`Only one financial year can be open at a time — "${other.name ?? "another financial year"}" is already open.`);
+  }
+  await prisma.annualAuditPlanPeriod.update({ where: { id }, data: { status: to, updated_by: user.id, updated_at: new Date() } });
+  const word = to === "OPEN" ? "Reopened" : to === "CLOSED" ? "Closed" : "Archived";
+  await logAudit("Annual Audit Plan Periods", id, "UPDATE", { message: `${word} period "${p.name}" — plans using it are not affected` });
+  revalidatePath("/admin/periods");
+  revalidatePath(`/admin/periods/${id}`);
+}
+
+/** Create a financial year and, only when the box is ticked, its four quarters. */
+export async function createFinancialYear(formData: FormData) {
+  const user = await requireRole(["org:admin"]);
+  const label = str(formData.get("fy_label")); // e.g. "2026/27"
+  if (!label || !/^\d{4}\/\d{2,4}$/.test(label)) throw new Error("Enter the financial year as 2026/27.");
+  const startYear = Number(label.slice(0, 4));
+  const name = `Financial year ${label}`;
+  const start = date(formData.get("fy_start")) ?? new Date(`${startYear}-04-01T00:00:00`);
+  const end = date(formData.get("fy_end")) ?? new Date(`${startYear + 1}-03-31T00:00:00`);
+  const siblings = await prisma.annualAuditPlanPeriod.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID } });
+  const err = validatePeriod({ period_type: "FY", status: "OPEN", start_date: start, end_date: end }, siblings);
+  if (err) throw new Error(err);
+  const scopeData = await scope();
+  const fy = await prisma.annualAuditPlanPeriod.create({
+    data: { ...scopeData, name, description: str(formData.get("description")), period_type: "FY", status: "OPEN", start_date: start, end_date: end, created_by: user.id, created_at: new Date() },
+  });
+  let quarters = 0;
+  if (formData.get("create_quarters") === "on") {
+    const qs: [string, string, string][] = [
+      ["1", `${startYear}-04-01`, `${startYear}-06-30`],
+      ["2", `${startYear}-07-01`, `${startYear}-09-30`],
+      ["3", `${startYear}-10-01`, `${startYear}-12-31`],
+      ["4", `${startYear + 1}-01-01`, `${startYear + 1}-03-31`],
+    ];
+    for (const [n, s, e] of qs) {
+      const clash = validatePeriod({ period_type: "QUARTER", status: "OPEN", start_date: new Date(s), end_date: new Date(e) }, siblings);
+      if (clash) continue; // never create a clashing quarter — tell the user via the count
+      await prisma.annualAuditPlanPeriod.create({
+        data: { ...scopeData, name: `${label} Quarter ${n}`, description: `Quarter ${n} of financial year ${label}`, period_type: "QUARTER", status: "OPEN", start_date: new Date(s), end_date: new Date(e), created_by: user.id, created_at: new Date() },
+      });
+      quarters++;
+    }
+  }
+  await logAudit("Annual Audit Plan Periods", fy.id, "INSERT", { message: `Created financial year ${label}${quarters ? ` with ${quarters} quarters` : ""}` });
   revalidatePath("/admin/periods");
 }
 

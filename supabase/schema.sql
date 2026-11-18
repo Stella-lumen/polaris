@@ -1336,3 +1336,34 @@ alter table task add column if not exists escalation_level int default 0;
 create table if not exists task_dependency (id text primary key, task_id text, depends_on_task_id text, created_at timestamptz);
 create table if not exists task_template (id text primary key, engagement_type_id text, stage text, title text, days_offset int, default_role text, planned_hours numeric, sort int, organization_id text, deleted boolean default false, created_at timestamptz);
 create table if not exists task_stage (id text primary key, name text, sort int, organization_id text, deleted boolean default false);
+
+-- Engagement workspace additions (additive)
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "objectives" TEXT;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "scope_text" TEXT;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "planning_approved_by" TEXT;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "planning_approved_date" TIMESTAMPTZ;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_template_id" TEXT;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_approved_by" TEXT;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_approved_date" TIMESTAMPTZ;
+ALTER TABLE "engagement" ADD COLUMN IF NOT EXISTS "report_status" TEXT;
+
+CREATE TABLE IF NOT EXISTS "working_paper" (
+  "id" TEXT PRIMARY KEY,
+  "engagement_id" TEXT REFERENCES "engagement"("id"),
+  "reference" TEXT,
+  "title" TEXT,
+  "preparer_id" TEXT,
+  "prepared_date" TIMESTAMPTZ,
+  "reviewer_id" TEXT,
+  "reviewed_date" TIMESTAMPTZ,
+  "status" TEXT,
+  "review_comment" TEXT,
+  "finding_id" TEXT,
+  "organization_id" TEXT,
+  "disabled" BOOLEAN DEFAULT false,
+  "deleted" BOOLEAN DEFAULT false,
+  "created_by" TEXT,
+  "created_at" TIMESTAMPTZ,
+  "updated_by" TEXT,
+  "updated_at" TIMESTAMPTZ
+);

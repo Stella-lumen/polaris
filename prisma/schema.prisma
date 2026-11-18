@@ -304,6 +304,14 @@ model Engagement {
   end_date DateTime?
   engagement_budget Decimal?
   engagement_spend Decimal?
+  objectives String?
+  scope_text String?
+  planning_approved_by String?
+  planning_approved_date DateTime?
+  report_template_id String?
+  report_approved_by String?
+  report_approved_date DateTime?
+  report_status String?
   r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
   prepared_by_id   String?
   prepared_date DateTime?
@@ -333,6 +341,7 @@ model Engagement {
   planned_hours Decimal?
   planned_expense_budget Decimal?
   teamMembers_engagement   EngagementTeamMember[] @relation("team_members")
+  workingPapers_engagement   WorkingPaper[] @relation("working_papers")
   tasks_engagement   Task[] @relation("tasks")
   timeEntries_engagement   TimeEntry[] @relation("time_entries")
   expenses_engagement   Expense[] @relation("expenses")
@@ -1116,4 +1125,27 @@ model TaskStage {
   organization_id   String?
   deleted Boolean  @default(false)
   @@map("task_stage")
+}
+
+model WorkingPaper {
+  id String   @id @default(ulid())
+  r_engagement   Engagement? @relation("working_papers", fields: [engagement_id], references: [id])
+  engagement_id   String?
+  reference String?
+  title String?
+  preparer_id String?
+  prepared_date DateTime?
+  reviewer_id String?
+  reviewed_date DateTime?
+  status String?   // PREPARED|REVIEWED|APPROVED|SENT_BACK
+  review_comment String?
+  finding_id String?
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  @@map("working_paper")
 }

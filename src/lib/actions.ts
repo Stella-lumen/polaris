@@ -1015,6 +1015,86 @@ export async function reopenCorrectiveAction(id: string, formData: FormData) {
   revalidatePath(`/follow-up/${id}`);
 }
 
+// ---------- working papers ----------
+export async function addWorkingPaper(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  const wp = await prisma.workingPaper.create({
+    data: {
+      ...(await scope()),
+      engagement_id: engagementId,
+      reference: str(formData.get("reference")),
+      title: str(formData.get("title")),
+      preparer_id: str(formData.get("preparer_id")) ?? user.id,
+      prepared_date: new Date(),
+      status: "PREPARED",
+    },
+  });
+  await saveFiles("working_paper", wp.id, formData);
+  await logAudit("Working Papers", wp.id, "INSERT", wp);
+  revalidatePath(`/engagements/${engagementId}/working-papers`);
+}
+
+export async function reviewWorkingPaper(id: string, engagementId: string, approve: boolean, comment?: string) {
+  const user = await requireUser();
+  const wp = await prisma.workingPaper.findUnique({ where: { id } });
+  if (!wp) throw new Error("Working paper not found");
+  if (wp.preparer_id === user.id) throw new Error("The preparer cannot review their own working paper");
+  if (!canAuthorise(user) && wp.reviewer_id !== user.id) throw new Error("Only a supervisor can review working papers");
+  await prisma.workingPaper.update({
+    where: { id },
+    data: {
+      status: approve ? "APPROVED" : "SENT_BACK",
+      reviewer_id: user.id,
+      reviewed_date: new Date(),
+      review_comment: comment ?? null,
+      updated_by: user.id,
+    },
+  });
+  await logAudit("Working Papers", id, approve ? "APPROVE" : "SEND_BACK", { by: user.id, comment });
+  revalidatePath(`/engagements/${engagementId}/working-papers`);
+}
+
+export async function approveWorkingPaperForm(id: string, engagementId: string) { await reviewWorkingPaper(id, engagementId, true); }
+export async function sendBackWorkingPaperForm(id: string, engagementId: string, formData: FormData) {
+  await reviewWorkingPaper(id, engagementId, false, str(formData.get("comment")) ?? undefined);
+}
+
+export async function uploadWorkingPaperFiles(id: string, engagementId: string, formData: FormData) {
+  await requireUser();
+  await saveFiles("working_paper", id, formData);
+  revalidatePath(`/engagements/${engagementId}/working-papers`);
+}
+
+export async function markWorkingPaperReviewed(id: string, engagementId: string) {
+  const user = await requireUser();
+  const wp = await prisma.workingPaper.findUnique({ where: { id } });
+  if (!wp) throw new Error("Working paper not found");
+  if (wp.preparer_id === user.id) throw new Error("The preparer cannot mark their own paper as reviewed");
+  await prisma.workingPaper.update({ where: { id }, data: { status: "REVIEWED", reviewer_id: user.id, reviewed_date: new Date() } });
+  await logAudit("Working Papers", id, "REVIEW", { by: user.id });
+  revalidatePath(`/engagements/${engagementId}/working-papers`);
+}
+
+/** Approve the planning stage of an engagement (supervisor only). */
+export async function approveEngagementPlanning(engagementId: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve the planning");
+  await prisma.engagement.update({ where: { id: engagementId }, data: { planning_approved_by: user.id, planning_approved_date: new Date() } });
+  await logAudit("Engagements", engagementId, "APPROVE_PLANNING", { by: user.id });
+  revalidatePath(`/engagements/${engagementId}/planning`);
+}
+
+/** Approve the engagement report (supervisor only, not the preparer). */
+export async function approveEngagementReport(engagementId: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve the report");
+  const e = await prisma.engagement.findUnique({ where: { id: engagementId } });
+  if (e?.prepared_by_id === user.id) throw new Error("The preparer cannot approve their own report");
+  await prisma.engagement.update({ where: { id: engagementId }, data: { report_status: "APPROVED", report_approved_by: user.id, report_approved_date: new Date() } });
+  await logAudit("Engagements", engagementId, "APPROVE_REPORT", { by: user.id });
+  revalidatePath(`/engagements/${engagementId}/reporting`);
+}
+
 /** Bulk/manual reminder — queues a sent_email to the owner + supervisor. */
 export async function sendActionReminder(id: string) {
   const user = await requireUser();

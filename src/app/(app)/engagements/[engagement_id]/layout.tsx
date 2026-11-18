@@ -3,13 +3,20 @@ import { notFound } from "next/navigation";
 import { EngagementNav } from "@/components/engagement-nav";
 
 const tabs = [
-  { slug: "", label: "Master Data" },
-  { slug: "dashboard", label: "Dashboard" },
-  { slug: "auditor-declarations", label: "Auditor Declarations" },
+  { slug: "dashboard", label: "Overview" },
   { slug: "planning", label: "Planning" },
   { slug: "audit-program", label: "Audit Program" },
   { slug: "fieldwork", label: "Fieldwork" },
-  { slug: "reporting", label: "Reporting" },
+  { slug: "working-papers", label: "Working Papers" },
+  { slug: "findings", label: "Findings" },
+  { slug: "reporting", label: "Report" },
+  { slug: "tasks", label: "Tasks" },
+  { slug: "team", label: "Team & Hours" },
+  { slug: "documents", label: "Documents" },
+  { slug: "follow-up", label: "Follow-up" },
+  { slug: "history", label: "History" },
+  { slug: "", label: "Master Data" },
+  { slug: "auditor-declarations", label: "Declarations" },
 ];
 
 export default async function EngagementLayout({

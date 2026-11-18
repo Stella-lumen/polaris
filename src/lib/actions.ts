@@ -698,32 +698,154 @@ export async function signoffDoc(
 }
 
 // ---------- risk assessment ----------
-export async function createRiskAssessment(formData: FormData) {
+const RISK_ROLES = ["org:admin", "org:chief_audit_executive", "org:member"];
+
+function riskData(formData: FormData) {
   const il = Number(formData.get("inherent_likelihood")) || null;
   const ii = Number(formData.get("inherent_impact")) || null;
   const rl = Number(formData.get("residual_likelihood")) || null;
   const ri = Number(formData.get("residual_impact")) || null;
+  return {
+    auditable_entity: str(formData.get("auditable_entity")),
+    risk_description: str(formData.get("risk_description")),
+    risk_category: str(formData.get("risk_category")),
+    inherent_likelihood: il,
+    inherent_impact: ii,
+    inherent_score: il && ii ? il * ii : null,
+    existing_controls: str(formData.get("existing_controls")),
+    control_effectiveness: str(formData.get("control_effectiveness")),
+    residual_likelihood: rl,
+    residual_impact: ri,
+    residual_score: rl && ri ? rl * ri : null,
+    linked_planned_engagement_id: str(formData.get("linked_planned_engagement_id")),
+    risk_owner_id: str(formData.get("risk_owner_id")),
+    strategic_objective_id: str(formData.get("strategic_objective_id")),
+    status: str(formData.get("status")) ?? "OPEN",
+    next_review_date: date(formData.get("next_review_date")),
+  };
+}
+
+export async function createRiskAssessment(formData: FormData) {
+  await requireRole(RISK_ROLES);
   const uid = await actorId();
   const r = await prisma.riskAssessment.create({
     data: {
       ...(await scope()),
-      auditable_entity: str(formData.get("auditable_entity")),
-      risk_description: str(formData.get("risk_description")),
-      risk_category: str(formData.get("risk_category")),
-      inherent_likelihood: il,
-      inherent_impact: ii,
-      inherent_score: il && ii ? il * ii : null,
-      existing_controls: str(formData.get("existing_controls")),
-      residual_likelihood: rl,
-      residual_impact: ri,
-      residual_score: rl && ri ? rl * ri : null,
-      linked_planned_engagement_id: str(formData.get("linked_planned_engagement_id")),
+      ...riskData(formData),
+      risk_ref: str(formData.get("risk_ref")),
+      source: "INTERNAL_AUDIT",
       assessed_by_id: uid,
       assessed_date: new Date(),
     },
   });
   await logAudit("Risk Assessments", r.id, "INSERT", r);
   revalidatePath("/risk-assessment");
+}
+
+/** Re-assessment: updates risk fields; the audit log captures old→new as history. */
+export async function updateRiskAssessment(id: string, formData: FormData) {
+  await requireRole(RISK_ROLES);
+  const uid = await actorId();
+  const old = await prisma.riskAssessment.findUnique({ where: { id } });
+  if (!old) return;
+  const data = riskData(formData);
+  await prisma.riskAssessment.update({ where: { id }, data: { ...data, updated_by: uid, updated_at: new Date() } });
+  const changed: Record<string, { old: unknown; new: unknown }> = {};
+  for (const [k, v] of Object.entries(data)) {
+    const o = (old as Record<string, unknown>)[k];
+    if (String(o ?? "") !== String(v ?? "")) changed[k] = { old: o ?? null, new: v ?? null };
+  }
+  if (Object.keys(changed).length) await logAudit("Risk Assessments", id, "UPDATE", changed);
+  revalidatePath("/risk-assessment");
+  revalidatePath(`/risk-assessment/${id}`);
+}
+
+/** Risk → plan: creates a proposed engagement under the chosen audit-plan period and covers the risk. */
+export async function addRiskToPlan(riskId: string, planId: string) {
+  await requireRole(RISK_ROLES);
+  const r = await prisma.riskAssessment.findUnique({ where: { id: riskId } });
+  if (!r || r.linked_planned_engagement_id) return;
+  const uid = await actorId();
+  const pe = await prisma.plannedEngagement.create({
+    data: {
+      organization_id: r.organization_id,
+      annual_audit_plan_id: planId,
+      name: `Audit of ${r.auditable_entity ?? "auditable entity"}`,
+      objectives: r.risk_description,
+      created_by: uid,
+      created_at: new Date(),
+    },
+  });
+  await prisma.riskAssessment.update({ where: { id: riskId }, data: { linked_planned_engagement_id: pe.id, updated_by: uid, updated_at: new Date() } });
+  await logAudit("Planned Engagements", pe.id, "INSERT", { from_risk: riskId, name: pe.name });
+  await logAudit("Risk Assessments", riskId, "UPDATE", { linked_planned_engagement_id: { old: null, new: pe.id } });
+  revalidatePath("/risk-assessment");
+  revalidatePath("/annual-audit-plan");
+}
+
+/** Register import — upserts on risk_ref so a re-import updates rather than duplicates. */
+export async function importRiskRegister(rows: Record<string, unknown>[]) {
+  await requireRole(RISK_ROLES);
+  const uid = await actorId();
+  const ctx = await scope();
+  let created = 0, updated = 0, skipped = 0;
+  for (const row of rows) {
+    const entity = String(row.auditable_entity ?? "").trim();
+    const desc = String(row.risk_description ?? "").trim();
+    if (!entity || !desc) { skipped++; continue; }
+    const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 1 && n <= 5 ? n : null; };
+    const il = num(row.inherent_likelihood), ii = num(row.inherent_impact);
+    const rl = num(row.residual_likelihood), ri = num(row.residual_impact);
+    const data = {
+      auditable_entity: entity,
+      risk_description: desc,
+      risk_category: String(row.risk_category ?? "") || null,
+      inherent_likelihood: il, inherent_impact: ii, inherent_score: il && ii ? il * ii : null,
+      existing_controls: String(row.existing_controls ?? "") || null,
+      control_effectiveness: String(row.control_effectiveness ?? "") || null,
+      residual_likelihood: rl, residual_impact: ri, residual_score: rl && ri ? rl * ri : null,
+      source: "IMPORTED",
+    };
+    const ref = String(row.risk_ref ?? "").trim();
+    const existing = ref ? await prisma.riskAssessment.findFirst({ where: { risk_ref: ref, deleted: false } }) : null;
+    if (existing) {
+      await prisma.riskAssessment.update({ where: { id: existing.id }, data: { ...data, updated_by: uid, updated_at: new Date() } });
+      await logAudit("Risk Assessments", existing.id, "UPDATE", { ...data, import_source: "register" });
+      updated++;
+    } else {
+      const r = await prisma.riskAssessment.create({ data: { ...ctx, ...data, risk_ref: ref || null, assessed_by_id: uid, assessed_date: new Date(), created_by: uid, created_at: new Date() } });
+      await logAudit("Risk Assessments", r.id, "INSERT", { ...data, import_source: "register" });
+      created++;
+    }
+  }
+  await logAudit("Risk Assessments", "register-import", "IMPORT", { created, updated, skipped });
+  revalidatePath("/risk-assessment");
+  return { created, updated, skipped };
+}
+
+export async function createStrategicObjective(formData: FormData) {
+  await requireRole(["org:admin"]);
+  const o = await prisma.strategicObjective.create({
+    data: { ...(await scope()), name: str(formData.get("name")), description: str(formData.get("description")), sort_order: Number(formData.get("sort_order")) || null },
+  });
+  await logAudit("Strategic Objectives", o.id, "INSERT", o);
+  revalidatePath("/admin/strategic-objectives");
+}
+
+export async function createRiskRatingBand(formData: FormData) {
+  await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.create({
+    data: {
+      ...(await scope()),
+      label: str(formData.get("label")),
+      min_score: Number(formData.get("min_score")) || null,
+      max_score: Number(formData.get("max_score")) || null,
+      color: str(formData.get("color")),
+      sort_order: Number(formData.get("sort_order")) || null,
+    },
+  });
+  await logAudit("Risk Rating Bands", b.id, "INSERT", b);
+  revalidatePath("/admin/risk-bands");
 }
 
 // ---------- corrective actions (follow-up) ----------

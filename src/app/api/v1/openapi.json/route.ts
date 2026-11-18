@@ -68,7 +68,25 @@ const spec = {
       },
     },
     "/audit-plans": listGet("Planning", "List annual audit plans", "audit-plan:read"),
-    "/risk-assessments": listGet("Risk", "List risk assessments with inherent/residual scores", "risks:read"),
+    "/risk-assessments": {
+      get: {
+        tags: ["Risk"],
+        summary: "List risk assessments with L×I scores, bands, coverage and ownership",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "band", in: "query", schema: { type: "string" }, description: "Residual band label (e.g. High, Extreme)" },
+          { name: "category", in: "query", schema: { type: "string" }, description: "Risk category filter" },
+          { name: "covered", in: "query", schema: { type: "string", enum: ["true", "false"] }, description: "true = has planned engagement, false = uncovered" },
+        ],
+        responses: {
+          "200": { description: "Risks with inherent/residual likelihood, impact, score, band, control_effectiveness, owner, objective, status, next_review_date, planned_engagement, covered. status=high filters High/Extreme residual. Scope: risks:read" },
+          "400": { description: "Invalid parameter" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks risks:read" },
+        },
+      },
+    },
     "/findings": listGet("Findings", "List findings with lifecycle status and corrective actions", "findings:read"),
     "/follow-ups": listGet("Follow-up", "List corrective actions with progress and overdue flags", "followups:read"),
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),

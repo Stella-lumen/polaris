@@ -22,6 +22,8 @@ const adminItems = [
   { href: "/admin/api-keys", label: "API Keys", icon: KeyRound },
   { href: "/admin/api-docs", label: "API Documentation", icon: FileText },
   { href: "/admin/organizations", label: "Organizations", icon: Building2 },
+  { href: "/admin/strategic-objectives", label: "Strategic Objectives", icon: FolderCog },
+  { href: "/admin/risk-bands", label: "Risk Rating Bands", icon: ShieldAlert },
   { href: "/admin/audit-logs", label: "Audit Logs", icon: ScrollText },
   { href: "/admin/sent-emails", label: "Sent Emails", icon: Mail },
 ];

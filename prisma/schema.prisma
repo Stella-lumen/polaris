@@ -399,6 +399,8 @@ model EngagementFindingAndRecommendations {
   recommendations String?
   management_comment String?
   status String? @default("OPEN")
+  r_source_risk   RiskAssessment? @relation("finding_source_risk", fields: [source_risk_id], references: [id])
+  source_risk_id String?
   r_prepared_by_engagement_auditor   EngagementAuditor? @relation("prepared_by_engagement_auditor", fields: [prepared_by_engagement_auditor_id], references: [id])
   prepared_by_engagement_auditor_id   String?
   prepared_date DateTime?
@@ -417,6 +419,39 @@ model EngagementFindingAndRecommendations {
   deleted_at DateTime?
   correctiveActions_finding   CorrectiveAction[] @relation("corrective_actions")
   @@map("engagement_finding_and_recommendations")
+}
+
+model StrategicObjective {
+  id String   @id @default(ulid())
+  name String?
+  description String?
+  sort_order Int?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  riskAssessments_strategic_objective   RiskAssessment[] @relation("risk_strategic_objective")
+  @@map("strategic_objective")
+}
+
+model RiskRatingBand {
+  id String   @id @default(ulid())
+  label String?
+  min_score Int?
+  max_score Int?
+  color String?
+  sort_order Int?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  @@map("risk_rating_band")
 }
 
 model EngagementPlanningDocument {
@@ -679,6 +714,8 @@ model Organization {
   reportDocumentTemplates_organization   ReportDocumentTemplate[] @relation("organization")
   reviewNotes_organization   ReviewNote[] @relation("organization")
   apiKeys_organization   ApiKey[] @relation("organization")
+  strategicObjectives_organization   StrategicObjective[] @relation("organization")
+  riskRatingBands_organization   RiskRatingBand[] @relation("organization")
   auditLogs_organization   AuditLog[] @relation("organization")
   sentEmails_organization   SentEmail[] @relation("organization")
   users_organization   User[] @relation("organization")
@@ -740,6 +777,7 @@ model User {
   reviewNotes_reviewer_cae   ReviewNote[] @relation("reviewer_cae")
   auditLogs_user   AuditLog[] @relation("user")
   riskAssessments_assessed_by   RiskAssessment[] @relation("risk_assessed_by")
+  riskAssessments_risk_owner   RiskAssessment[] @relation("risk_owner")
   correctiveActions_owner   CorrectiveAction[] @relation("corrective_action_owner")
   tasks_assignee   Task[] @relation("task_assignee")
   timeEntries_user   TimeEntry[] @relation("time_entries")
@@ -770,6 +808,7 @@ model StoredFile {
 
 model RiskAssessment {
   id String   @id @default(ulid())
+  risk_ref String?
   auditable_entity String?
   risk_description String?
   risk_category String?
@@ -777,14 +816,23 @@ model RiskAssessment {
   inherent_impact Int?
   inherent_score Int?
   existing_controls String?
+  control_effectiveness String?
   residual_likelihood Int?
   residual_impact Int?
   residual_score Int?
   r_linked_planned_engagement   PlannedEngagement? @relation("risk_linked_planned_engagement", fields: [linked_planned_engagement_id], references: [id])
   linked_planned_engagement_id   String?
+  r_risk_owner   User? @relation("risk_owner", fields: [risk_owner_id], references: [id])
+  risk_owner_id String?
+  r_strategic_objective   StrategicObjective? @relation("risk_strategic_objective", fields: [strategic_objective_id], references: [id])
+  strategic_objective_id String?
+  source String? @default("INTERNAL_AUDIT")
+  status String? @default("OPEN")
+  next_review_date DateTime?
   r_assessed_by   User? @relation("risk_assessed_by", fields: [assessed_by_id], references: [id])
   assessed_by_id   String?
   assessed_date DateTime?
+  findings_source_risk   EngagementFindingAndRecommendations[] @relation("finding_source_risk")
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)

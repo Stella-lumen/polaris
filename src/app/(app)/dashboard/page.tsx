@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { escalateOverdueWork } from "@/lib/escalation";
 import { Briefcase, CheckCircle2, FileWarning, TriangleAlert, BellRing } from "lucide-react";
+import { isHighRisk, bandFor, bandBadgeClass, bandBadgeText, DEFAULT_BANDS } from "@/lib/risk";
 import {
   EngagementStatusDonut, FindingsStatusDonut, EngagementsByTypeBar,
 } from "@/components/dashboard-charts";
@@ -26,7 +27,7 @@ export default async function DashboardPage() {
   const scope = { deleted: false, organization_id: DEMO_ORGANIZATION_ID };
 
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const [engagements, findings, tasks, actions] = await Promise.all([
+  const [engagements, findings, tasks, actions, risks, bands] = await Promise.all([
     prisma.engagement.findMany({
       where: scope,
       include: { r_engagement_type: true },
@@ -48,6 +49,12 @@ export default async function DashboardPage() {
       orderBy: { due_date: "asc" },
       take: 8,
     }),
+    prisma.riskAssessment.findMany({
+      where: scope,
+      select: { id: true, auditable_entity: true, residual_score: true, residual_likelihood: true, residual_impact: true, linked_planned_engagement_id: true },
+      orderBy: { residual_score: "desc" },
+    }),
+    prisma.riskRatingBand.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, orderBy: { min_score: "asc" } }),
   ]);
 
   const completed = engagements.filter((e) => e.authorised_date != null);
@@ -70,6 +77,14 @@ export default async function DashboardPage() {
   }
 
   const rate = engagements.length ? Math.round((completed.length / engagements.length) * 100) : 0;
+
+  const bandList = bands.length ? bands : DEFAULT_BANDS;
+  const uncoveredHigh = risks.filter((r) => isHighRisk(r.residual_score, bandList) && !r.linked_planned_engagement_id).length;
+  const heat = {} as Record<string, number>;
+  for (const r of risks) {
+    if (r.residual_likelihood && r.residual_impact) heat[`${r.residual_likelihood}x${r.residual_impact}`] = (heat[`${r.residual_likelihood}x${r.residual_impact}`] ?? 0) + 1;
+  }
+  const heatCell = (s: number) => s <= 4 ? "bg-emerald-100 text-emerald-900" : s <= 9 ? "bg-amber-100 text-amber-900" : s <= 14 ? "bg-orange-200 text-orange-950" : "bg-red-200 text-red-950";
 
   // Queue supervisor notifications for overdue/near-due work (idempotent per item per day)
   const escalation = await escalateOverdueWork();
@@ -121,6 +136,54 @@ export default async function DashboardPage() {
         ]} />
         <EngagementsByTypeBar data={[...byType.entries()].map(([type, v]) => ({ type, ...v }))} />
       </div>
+
+      {risks.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border p-4">
+            <div className="font-medium">Residual risk heat map</div>
+            <div className="mb-3 text-xs text-muted-foreground">
+              Likelihood × Impact — click a cell to view those risks
+              {uncoveredHigh > 0 && <span className="ml-1 font-medium text-red-600">· {uncoveredHigh} high-risk items not covered by the plan</span>}
+            </div>
+            <div className="grid w-fit grid-cols-[auto_repeat(5,2.5rem)] gap-0.5 text-center text-xs">
+              <div className="pr-1 text-[10px] text-muted-foreground">L\I</div>
+              {[1, 2, 3, 4, 5].map((im) => <div key={im} className="text-muted-foreground">{im}</div>)}
+              {[5, 4, 3, 2, 1].map((l) => (
+                <div key={l} className="contents">
+                  <div className="flex items-center pr-1 text-muted-foreground">{l}</div>
+                  {[1, 2, 3, 4, 5].map((im) => (
+                    <Link
+                      key={im}
+                      href={`/risk-assessment?l=${l}&i=${im}&view=r`}
+                      className={`flex h-8 items-center justify-center rounded font-medium hover:ring-2 hover:ring-orange-400 ${heatCell(l * im)}`}
+                    >
+                      {heat[`${l}x${im}`] || ""}
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border p-4">
+            <div className="font-medium">Top residual risks</div>
+            <div className="mb-3 text-xs text-muted-foreground">Highest-rated risks driving the audit plan</div>
+            <div className="flex flex-col gap-1.5">
+              {risks.slice(0, 10).map((r) => {
+                const b = bandFor(r.residual_score, bandList);
+                return (
+                  <Link key={r.id} href={`/risk-assessment/${r.id}`} className="flex items-center gap-2 rounded border px-2 py-1.5 hover:bg-accent">
+                    <span className={bandBadgeClass(b)}>{bandBadgeText(r.residual_score, b)}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{r.auditable_entity}</span>
+                    {!r.linked_planned_engagement_id && isHighRisk(r.residual_score, bandList) && (
+                      <span className="rounded bg-red-100 px-1.5 text-xs font-medium text-red-800">not covered</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg border p-4">
         <div className="flex items-center gap-2 font-medium">

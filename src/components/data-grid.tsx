@@ -37,7 +37,14 @@ function fmtCell(v: unknown): string {
   return s;
 }
 
-export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle" | "delete";
+export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle" | "delete" | "toplan";
+
+export type ToPlanConfig = {
+  /** plan periods offered in the row dropdown */
+  plans: { id: string; label: string }[];
+  /** bound server action — receives (rowId, planId) */
+  onAdd: (id: string, planId: string) => Promise<unknown>;
+};
 
 export type DeleteConfig = {
   /** bound server action — receives row id */
@@ -254,6 +261,43 @@ function DeleteCell({ data, config }: { data: Record<string, unknown>; config: D
   );
 }
 
+function ToPlanCell({ data, config }: { data: Record<string, unknown>; config: ToPlanConfig }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  if (data.planned_engagement_id) return null;
+  return (
+    <div className="relative">
+      <button
+        disabled={busy}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="rounded bg-orange-600 px-2 py-1 text-xs font-medium whitespace-nowrap text-white hover:bg-orange-500 disabled:opacity-50"
+      >
+        Add to Plan…
+      </button>
+      {open && (
+        <div className="absolute left-0 top-6 z-10 w-56 rounded-md border bg-background p-1 text-xs shadow-md">
+          <div className="px-1.5 py-1 text-muted-foreground">Add to audit plan</div>
+          {config.plans.map((p) => (
+            <button
+              key={p.id}
+              disabled={busy}
+              onClick={async (e) => {
+                e.stopPropagation();
+                setBusy(true);
+                try { await config.onAdd(String(data.id), p.id); router.refresh(); } finally { setBusy(false); setOpen(false); }
+              }}
+              className="block w-full truncate rounded px-1.5 py-1 text-left hover:bg-accent"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionsCell({
   data,
   actions,
@@ -262,6 +306,7 @@ function ActionsCell({
   workflow,
   toggle,
   deleteConfig,
+  toPlan,
   onNavigate,
 }: {
   data: unknown;
@@ -271,6 +316,7 @@ function ActionsCell({
   workflow?: WorkflowConfig;
   toggle?: ToggleConfig;
   deleteConfig?: DeleteConfig;
+  toPlan?: ToPlanConfig;
   onNavigate: (id: string) => void;
 }) {
   const row = data as Record<string, unknown> & { id?: string; files?: { name?: string }[] };
@@ -293,6 +339,7 @@ function ActionsCell({
       {actions.includes("workflow") && workflow && <WorkflowCell data={row} config={workflow} />}
       {actions.includes("toggle") && toggle && <ToggleCell data={row} config={toggle} />}
       {actions.includes("delete") && deleteConfig && <DeleteCell data={row} config={deleteConfig} />}
+      {actions.includes("toplan") && toPlan && <ToPlanCell data={row} config={toPlan} />}
     </div>
   );
 }
@@ -307,6 +354,8 @@ export function DataGrid({
   workflow,
   toggle,
   deleteConfig,
+  toPlan,
+  badgeMap,
   rowStyleRules,
   pageSize,
   heightClass = "h-[600px]",
@@ -327,6 +376,10 @@ export function DataGrid({
   toggle?: ToggleConfig;
   /** trash button on rows flagged deletable (bound server action, serializable) */
   deleteConfig?: DeleteConfig;
+  /** "Add to plan" dropdown on rows lacking planned_engagement_id */
+  toPlan?: ToPlanConfig;
+  /** render a field's value as a coloured badge: { field: { "VALUE": "tailwind classes" } } */
+  badgeMap?: Record<string, Record<string, string>>;
   /** serializable row style rules: when row[field] === when, apply style (e.g. pink disabled rows) */
   rowStyleRules?: { field: string; when: unknown; style: Record<string, string> }[];
   /** rows per pagination page (default 20) */
@@ -336,8 +389,8 @@ export function DataGrid({
 }) {
   const router = useRouter();
   const go = (id: string) => hrefPattern && router.push(hrefPattern.replace("{id}", id));
-  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0);
-  const actionWidth = rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
+  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0) + (rowActions?.includes("toplan") ? 1 : 0);
+  const actionWidth = rowActions?.includes("toplan") ? 130 : rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
   const cols: ColDef[] = [
     ...(rowActions?.length
       ? [{
@@ -352,11 +405,20 @@ export function DataGrid({
           resizable: false,
           suppressMovable: true,
           cellRenderer: (p: ICellRendererParams) => (
-            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} deleteConfig={deleteConfig} onNavigate={go} />
+            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} deleteConfig={deleteConfig} toPlan={toPlan} onNavigate={go} />
           ),
         }]
       : []),
-    ...colDefs,
+    ...colDefs.map((c) =>
+      badgeMap?.[c.field ?? ""] ? {
+        ...c,
+        cellRenderer: (p: ICellRendererParams) => {
+          const v = String(p.value ?? "");
+          const cls = badgeMap[c.field ?? ""]?.[v];
+          return cls ? <span className={cls}>{v}</span> : <span>{v}</span>;
+        },
+      } : c
+    ),
   ];
   return (
     <div className={`${heightClass} w-full`}>

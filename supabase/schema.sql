@@ -654,8 +654,41 @@ CREATE TABLE "stored_file" (
 );
 
 -- CreateTable
+CREATE TABLE "strategic_objective" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "name" TEXT,
+    "description" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "strategic_objective_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE "risk_rating_band" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "label" TEXT,
+    "min_score" INTEGER,
+    "max_score" INTEGER,
+    "color" TEXT,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMPTZ,
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMPTZ,
+
+    CONSTRAINT "risk_rating_band_pkey" PRIMARY KEY ("id")
+);
+
 CREATE TABLE "risk_assessment" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "risk_ref" TEXT,
     "auditable_entity" TEXT,
     "risk_description" TEXT,
     "risk_category" TEXT,
@@ -663,10 +696,16 @@ CREATE TABLE "risk_assessment" (
     "inherent_impact" INTEGER,
     "inherent_score" INTEGER,
     "existing_controls" TEXT,
+    "control_effectiveness" TEXT,
     "residual_likelihood" INTEGER,
     "residual_impact" INTEGER,
     "residual_score" INTEGER,
     "linked_planned_engagement_id" TEXT,
+    "risk_owner_id" TEXT,
+    "strategic_objective_id" TEXT,
+    "source" TEXT DEFAULT 'INTERNAL_AUDIT',
+    "status" TEXT DEFAULT 'OPEN',
+    "next_review_date" TIMESTAMPTZ,
     "assessed_by_id" TEXT,
     "assessed_date" TIMESTAMPTZ,
     "organization_id" TEXT,

@@ -1926,6 +1926,7 @@ export async function updateEmailSettings(formData: FormData) {
   });
   await logAudit("Email settings", "delivery", "UPDATE", { message: `Email delivery settings changed — mode set to ${mode === "LIVE" ? "Live" : "Demo"}` });
   revalidatePath("/admin/sent-emails");
+  revalidatePath("/admin/sent-emails/settings");
 }
 
 export async function sendTestEmail(formData: FormData) {
@@ -1947,6 +1948,7 @@ export async function sendTestEmail(formData: FormData) {
   const result = await deliverEmail(row.id);
   await logAudit("Email settings", "test", "NOTIFICATION", { message: `Test email sent to ${to} — ${result.message}` });
   revalidatePath("/admin/sent-emails");
+  revalidatePath("/admin/sent-emails/settings");
 }
 
 export async function retryEmail(id: string) {
@@ -1960,6 +1962,7 @@ export async function retryEmail(id: string) {
   const result = await deliverEmail(id);
   await logAudit("Sent emails", id, "NOTIFICATION", { message: `Retried an email — ${result.message}` });
   revalidatePath("/admin/sent-emails");
+  revalidatePath("/admin/sent-emails/settings");
 }
 
 export async function updateEscalationRule(id: string, formData: FormData) {
@@ -1992,4 +1995,5 @@ export async function runEscalationNow() {
   const r = await escalateOverdueWork();
   await logAudit("Escalation rules", "engine", "NOTIFICATION", { message: `Escalation engine run manually — ${r.sent} notification${r.sent === 1 ? "" : "s"} queued` });
   revalidatePath("/admin/sent-emails");
+  revalidatePath("/admin/sent-emails/settings");
 }

@@ -722,18 +722,48 @@ CREATE TABLE "risk_assessment" (
 );
 
 -- CreateTable
+CREATE TABLE "escalation_rule" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+    "trigger" TEXT,
+    "days" INTEGER,
+    "notify_owner" BOOLEAN NOT NULL DEFAULT false,
+    "notify_supervisor" BOOLEAN NOT NULL DEFAULT false,
+    "notify_cae" BOOLEAN NOT NULL DEFAULT false,
+    "notify_hod" BOOLEAN NOT NULL DEFAULT false,
+    "sort_order" INTEGER,
+    "organization_id" TEXT,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ,
+
+    CONSTRAINT "escalation_rule_pkey" PRIMARY KEY ("id")
+);
+
 CREATE TABLE "corrective_action" (
     "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "finding_id" TEXT,
     "action_description" TEXT,
+    "source" TEXT DEFAULT 'INTERNAL_AUDIT',
+    "ag_reference" TEXT,
+    "ag_report_year" INTEGER,
+    "management_response" TEXT,
+    "management_comments" TEXT,
     "owner_user_id" TEXT,
+    "supervisor_user_id" TEXT,
     "due_date" TIMESTAMPTZ,
+    "original_due_date" TIMESTAMPTZ,
+    "revision_count" INTEGER NOT NULL DEFAULT 0,
+    "revision_reason" TEXT,
+    "revision_approved_by" TEXT,
     "status" TEXT,
     "progress" INTEGER,
     "evidence" TEXT,
     "implemented_date" TIMESTAMPTZ,
     "verified_by_id" TEXT,
     "verified_date" TIMESTAMPTZ,
+    "verification_outcome" TEXT,
+    "verification_comments" TEXT,
+    "reopened_reason" TEXT,
+    "escalation_level" INTEGER NOT NULL DEFAULT 0,
     "organization_id" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "deleted" BOOLEAN NOT NULL DEFAULT false,

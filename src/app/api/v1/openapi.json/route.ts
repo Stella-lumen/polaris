@@ -88,7 +88,25 @@ const spec = {
       },
     },
     "/findings": listGet("Findings", "List findings with lifecycle status and corrective actions", "findings:read"),
-    "/follow-ups": listGet("Follow-up", "List corrective actions with progress and overdue flags", "followups:read"),
+    "/follow-ups": {
+      get: {
+        tags: ["Follow-up"],
+        summary: "List corrective actions incl. AG findings, verification and escalation state",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "source", in: "query", schema: { type: "string", enum: ["INTERNAL_AUDIT", "AG", "OTHER"] }, description: "Source filter — AG returns Auditor General actions" },
+          { name: "overdue", in: "query", schema: { type: "string", enum: ["true", "false"] }, description: "Overdue flag filter" },
+          { name: "due_before", in: "query", schema: { type: "string", format: "date" }, description: "Due on or before this date" },
+        ],
+        responses: {
+          "200": { description: "Actions with source, ag_reference, ag_report_year, owner, supervisor, due/original_due dates, revision_count, status, percent_done, is_overdue, days_overdue, escalation_level, verification fields. Scope: followups:read" },
+          "400": { description: "Invalid parameter" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks followups:read" },
+        },
+      },
+    },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
     "/resource-allocations": listGet("Resources", "List time entries / resource allocations", "resources:read"),
     "/reports/summary": {

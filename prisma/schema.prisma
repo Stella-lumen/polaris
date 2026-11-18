@@ -716,6 +716,7 @@ model Organization {
   apiKeys_organization   ApiKey[] @relation("organization")
   strategicObjectives_organization   StrategicObjective[] @relation("organization")
   riskRatingBands_organization   RiskRatingBand[] @relation("organization")
+  escalationRules_organization   EscalationRule[] @relation("organization")
   auditLogs_organization   AuditLog[] @relation("organization")
   sentEmails_organization   SentEmail[] @relation("organization")
   users_organization   User[] @relation("organization")
@@ -779,6 +780,7 @@ model User {
   riskAssessments_assessed_by   RiskAssessment[] @relation("risk_assessed_by")
   riskAssessments_risk_owner   RiskAssessment[] @relation("risk_owner")
   correctiveActions_owner   CorrectiveAction[] @relation("corrective_action_owner")
+  correctiveActions_supervisor   CorrectiveAction[] @relation("corrective_action_supervisor")
   tasks_assignee   Task[] @relation("task_assignee")
   timeEntries_user   TimeEntry[] @relation("time_entries")
   expenses_user   Expense[] @relation("expenses")
@@ -845,20 +847,51 @@ model RiskAssessment {
   @@map("risk_assessment")
 }
 
+model EscalationRule {
+  id String   @id @default(ulid())
+  trigger String?
+  days Int?
+  notify_owner Boolean @default(false)
+  notify_supervisor Boolean @default(false)
+  notify_cae Boolean @default(false)
+  notify_hod Boolean @default(false)
+  sort_order Int?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  deleted Boolean  @default(false)
+  created_at DateTime?
+  @@map("escalation_rule")
+}
+
 model CorrectiveAction {
   id String   @id @default(ulid())
   r_finding   EngagementFindingAndRecommendations? @relation("corrective_actions", fields: [finding_id], references: [id])
   finding_id   String?
   action_description String?
+  source String? @default("INTERNAL_AUDIT")
+  ag_reference String?
+  ag_report_year Int?
+  management_response String?
+  management_comments String?
   r_owner   User? @relation("corrective_action_owner", fields: [owner_user_id], references: [id])
   owner_user_id   String?
+  r_supervisor   User? @relation("corrective_action_supervisor", fields: [supervisor_user_id], references: [id])
+  supervisor_user_id   String?
   due_date DateTime?
+  original_due_date DateTime?
+  revision_count Int @default(0)
+  revision_reason String?
+  revision_approved_by String?
   status String?
   progress Int?
   evidence String?
   implemented_date DateTime?
   verified_by_id String?
   verified_date DateTime?
+  verification_outcome String?
+  verification_comments String?
+  reopened_reason String?
+  escalation_level Int @default(0)
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)

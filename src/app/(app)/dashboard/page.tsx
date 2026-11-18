@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   const scope = { deleted: false, organization_id: DEMO_ORGANIZATION_ID };
 
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const [engagements, findings, tasks, actions, risks, bands] = await Promise.all([
+  const [engagements, findings, tasks, actions, allActions, risks, bands] = await Promise.all([
     prisma.engagement.findMany({
       where: scope,
       include: { r_engagement_type: true },
@@ -49,6 +49,7 @@ export default async function DashboardPage() {
       orderBy: { due_date: "asc" },
       take: 8,
     }),
+    prisma.correctiveAction.findMany({ where: scope, select: { status: true, due_date: true, source: true } }),
     prisma.riskAssessment.findMany({
       where: scope,
       select: { id: true, auditable_entity: true, residual_score: true, residual_likelihood: true, residual_impact: true, linked_planned_engagement_id: true },
@@ -89,11 +90,18 @@ export default async function DashboardPage() {
   // Queue supervisor notifications for overdue/near-due work (idempotent per item per day)
   const escalation = await escalateOverdueWork();
 
+  const overdueActions = allActions.filter((a) => a.due_date && a.due_date < now && a.status !== "VERIFIED").length;
+  const openAG = allActions.filter((a) => a.source === "AG" && a.status !== "VERIFIED").length;
+  const awaitingVerification = allActions.filter((a) => a.status === "IMPLEMENTED").length;
+  const closureRate = allActions.length ? Math.round((allActions.filter((a) => a.status === "VERIFIED").length / allActions.length) * 100) : 0;
+
   const cards = [
     { label: "Total Engagements", value: engagements.length, sub: `${rate}% completion rate`, icon: Briefcase, warn: false },
     { label: "Completed", value: completed.length, sub: `${inProgress.length} in progress`, icon: CheckCircle2, warn: false },
     { label: "Total Findings", value: findings.length, sub: `${cleared.length} cleared`, icon: FileWarning, warn: false },
     { label: "Overdue Findings", value: overdue.length, sub: "Require attention", icon: TriangleAlert, warn: true },
+    { label: "Overdue Actions", value: overdueActions, sub: `${awaitingVerification} awaiting verification`, icon: TriangleAlert, warn: overdueActions > 0 },
+    { label: "Corrective Actions", value: allActions.length, sub: `${closureRate}% closed · ${openAG} open AG`, icon: FileWarning, warn: openAG > 0 },
   ];
 
   const badge = (e: (typeof engagements)[number]) =>

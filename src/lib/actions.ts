@@ -863,8 +863,15 @@ export async function createCorrectiveAction(formData: FormData) {
       ...(await scope()),
       finding_id: str(formData.get("finding_id")),
       action_description: str(formData.get("action_description")),
+      source: str(formData.get("source")) ?? "INTERNAL_AUDIT",
+      ag_reference: str(formData.get("ag_reference")),
+      ag_report_year: Number(formData.get("ag_report_year")) || null,
+      management_response: str(formData.get("management_response")),
+      management_comments: str(formData.get("management_comments")),
       owner_user_id: str(formData.get("owner_user_id")),
+      supervisor_user_id: str(formData.get("supervisor_user_id")),
       due_date: date(formData.get("due_date")),
+      original_due_date: date(formData.get("due_date")),
       status: "OPEN",
       progress: 0,
     },
@@ -873,20 +880,131 @@ export async function createCorrectiveAction(formData: FormData) {
   revalidatePath("/follow-up");
 }
 
+/**
+ * Progress / field updates + status transitions.
+ * IMPLEMENTED is gated: progress must be 100 AND at least one evidence file
+ * must be attached to the action in the document repository.
+ */
 export async function updateCorrectiveAction(id: string, formData: FormData) {
   const user = await requireUser();
   const status = str(formData.get("status"));
-  const data: Record<string, unknown> = { updated_by: user.id, status, progress: Number(formData.get("progress")) || 0 };
-  if (status === "IMPLEMENTED") data.implemented_date = new Date();
-  if (status === "VERIFIED") {
-    if (!canAuthorise(user)) throw new Error("Only Admin or CAE can verify actions");
-    data.verified_by_id = user.id;
-    data.verified_date = new Date();
+  const progress = Number(formData.get("progress")) || 0;
+  const current = await prisma.correctiveAction.findUnique({ where: { id } });
+  if (!current) throw new Error("Action not found");
+
+  const data: Record<string, unknown> = {
+    updated_by: user.id,
+    status,
+    progress,
+    management_comments: str(formData.get("management_comments")) ?? current.management_comments,
+  };
+  if (status === "IMPLEMENTED") {
+    const evidence = await prisma.storedFile.count({ where: { entity_type: "corrective-action", entity_id: id, deleted: false } });
+    if (progress < 100 || evidence === 0) {
+      throw new Error(`Cannot mark IMPLEMENTED — requires 100% done (currently ${progress}%) and at least one evidence file (${evidence} attached).`);
+    }
+    data.implemented_date = new Date();
   }
   const a = await prisma.correctiveAction.update({ where: { id }, data });
-  await logAudit("Corrective Actions", id, "UPDATE", { status });
+  await logAudit("Corrective Actions", id, "UPDATE", { status: { old: current.status, new: status }, progress: { old: current.progress, new: progress } });
   revalidatePath("/follow-up");
   return a;
+}
+
+/**
+ * IA verification of an implemented action — segregation of duties:
+ * the verifier cannot be the action owner. NOT_EFFECTIVE reopens it.
+ */
+export async function verifyCorrectiveAction(id: string, formData: FormData) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only Internal Audit (Admin/CAE) can verify actions");
+  const a = await prisma.correctiveAction.findUnique({ where: { id } });
+  if (!a) throw new Error("Action not found");
+  if (a.owner_user_id === user.id) throw new Error("The action owner cannot verify their own action — segregation of duties");
+  if (a.status !== "IMPLEMENTED") throw new Error("Only IMPLEMENTED actions can be verified");
+
+  const outcome = str(formData.get("outcome")) ?? "EFFECTIVE";
+  const comments = str(formData.get("verification_comments"));
+  const effective = outcome === "EFFECTIVE";
+  await prisma.correctiveAction.update({
+    where: { id },
+    data: {
+      status: effective ? "VERIFIED" : "OPEN",
+      verified_by_id: user.id,
+      verified_date: new Date(),
+      verification_outcome: outcome,
+      verification_comments: comments,
+      reopened_reason: effective ? null : str(formData.get("reopened_reason")) ?? "Verification outcome: Not Effective",
+      updated_by: user.id,
+      updated_at: new Date(),
+    },
+  });
+  await logAudit("Corrective Actions", id, "UPDATE", { verification: { outcome, comments, verified_by: user.id } });
+  revalidatePath("/follow-up");
+}
+
+/** Revised due date — requires a reason; the approver is the supervisor or a CAE/admin. */
+export async function reviseDueDate(id: string, formData: FormData) {
+  const user = await requireUser();
+  const a = await prisma.correctiveAction.findUnique({ where: { id } });
+  if (!a) throw new Error("Action not found");
+  const reason = str(formData.get("revision_reason"));
+  if (!reason) throw new Error("A reason is required to revise the due date");
+  const isApprover = canAuthorise(user) || a.supervisor_user_id === user.id;
+  if (!isApprover) throw new Error("Only the supervisor or CAE/admin can approve a due-date revision");
+  const due = date(formData.get("due_date"));
+  if (!due) throw new Error("New due date required");
+  await prisma.correctiveAction.update({
+    where: { id },
+    data: {
+      due_date: due,
+      original_due_date: a.original_due_date ?? a.due_date,
+      revision_count: (a.revision_count ?? 0) + 1,
+      revision_reason: reason,
+      revision_approved_by: user.id,
+      updated_by: user.id,
+      updated_at: new Date(),
+    },
+  });
+  await logAudit("Corrective Actions", id, "UPDATE", { due_date: { old: a.due_date, new: due }, reason });
+  revalidatePath("/follow-up");
+}
+
+/** Bulk/manual reminder — queues a sent_email to the owner + supervisor. */
+export async function sendActionReminder(id: string) {
+  const user = await requireUser();
+  const a = await prisma.correctiveAction.findUnique({ where: { id }, include: { r_owner: true, r_supervisor: true } });
+  if (!a) return;
+  const to = [a.r_owner?.email, a.r_supervisor?.email].filter(Boolean) as string[];
+  if (!to.length) to.push("notifications@polaris.internal");
+  await prisma.sentEmail.create({
+    data: {
+      resend_id: `manual-reminder:${id}:${Date.now()}`,
+      from_email: "notifications@polaris.internal",
+      to_emails: to,
+      cc_emails: [],
+      bcc_emails: [],
+      subject: `[REMINDER] Corrective action due ${a.due_date?.toISOString().slice(0, 10) ?? "soon"}`,
+      body: `Reminder: "${(a.action_description ?? "").slice(0, 140)}" — status ${a.status}, ${a.progress}% done, due ${a.due_date?.toISOString().slice(0, 10) ?? "—"}. Sent by ${user.first_name} ${user.last_name}.`,
+      attachments: [],
+      scheduled_at: new Date(),
+      organization_id: DEMO_ORGANIZATION_ID,
+      created_by: user.id,
+      created_at: new Date(),
+    },
+  });
+  await logAudit("Corrective Actions", id, "REMINDER", { to });
+}
+
+/** Reassign owner (bulk or single) — keeps full audit trail. */
+export async function reassignCorrectiveAction(id: string, formData: FormData) {
+  const user = await requireUser();
+  const a = await prisma.correctiveAction.findUnique({ where: { id } });
+  const newOwner = str(formData.get("owner_user_id"));
+  if (!a || !newOwner) return;
+  await prisma.correctiveAction.update({ where: { id }, data: { owner_user_id: newOwner, updated_by: user.id, updated_at: new Date() } });
+  await logAudit("Corrective Actions", id, "UPDATE", { owner_user_id: { old: a.owner_user_id, new: newOwner } });
+  revalidatePath("/follow-up");
 }
 
 // ---------- tasks & scheduling ----------

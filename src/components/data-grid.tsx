@@ -194,8 +194,8 @@ function WorkflowCell({ data, config }: { data: Record<string, unknown>; config:
         try {
           await config.onAdvance(String(data.id), next);
           router.refresh();
-        } catch {
-          /* e.g. CAE-only step */
+        } catch (err) {
+          alert(err instanceof Error ? err.message : "Could not advance status");
         } finally {
           setBusy(false);
         }

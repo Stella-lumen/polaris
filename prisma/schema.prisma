@@ -524,6 +524,15 @@ model PlanningDocumentTemplate {
   name String?
   reference String?
   required Boolean  @default(false)
+  section String?
+  status String? @default("DRAFT")
+  version Int @default(1)
+  fields_json Json?
+  description String?
+  logo_file_id String?
+  approved_by String?
+  approved_date DateTime?
+  engagement_types Json?
   files Json
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
@@ -597,6 +606,15 @@ model ReportDocumentTemplate {
   name String?
   reference String?
   required Boolean  @default(false)
+  section String?
+  status String? @default("DRAFT")
+  version Int @default(1)
+  fields_json Json?
+  description String?
+  logo_file_id String?
+  approved_by String?
+  approved_date DateTime?
+  engagement_types Json?
   files Json
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
@@ -1140,6 +1158,8 @@ model WorkingPaper {
   status String?   // PREPARED|REVIEWED|APPROVED|SENT_BACK
   review_comment String?
   finding_id String?
+  template_id String?
+  values_json Json?
   organization_id   String?
   disabled Boolean  @default(false)
   deleted Boolean  @default(false)
@@ -1148,4 +1168,19 @@ model WorkingPaper {
   updated_by String?
   updated_at DateTime?
   @@map("working_paper")
+}
+
+model TemplateVersion {
+  id String   @id @default(ulid())
+  template_id String
+  template_kind String?        // planning | report
+  version Int?
+  name String?
+  description String?
+  fields_json Json?
+  changed_by String?
+  created_at DateTime?
+  approved_by String?
+  approved_date DateTime?
+  @@map("template_version")
 }

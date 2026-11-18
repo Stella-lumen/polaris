@@ -1593,3 +1593,137 @@ export async function deleteApiKey(id: string) {
   revalidatePath("/admin/api-keys");
 }
 
+
+// ---------- document templates ----------
+const templateModel = (kind: string) => (kind === "report" ? prisma.reportDocumentTemplate : prisma.planningDocumentTemplate);
+
+async function snapshotTemplate(kind: string, t: { id: string; name: string | null; description: string | null; fields_json: unknown; version: number | null }, userId: string, approvedBy?: string | null) {
+  await prisma.templateVersion.create({
+    data: {
+      template_id: t.id, template_kind: kind, version: t.version ?? 1,
+      name: t.name, description: t.description,
+      fields_json: (t.fields_json ?? []) as object,
+      changed_by: userId, created_at: new Date(),
+      approved_by: approvedBy ?? null, approved_date: approvedBy ? new Date() : null,
+    },
+  });
+}
+
+export async function updateTemplate(kind: string, id: string, formData: FormData) {
+  const user = await requireUser();
+  const m = templateModel(kind) as any;
+  const t = await m.findUnique({ where: { id } });
+  if (!t) throw new Error("Template not found");
+  let fields: unknown = t.fields_json;
+  try { const f = formData.get("fields_json"); if (f) fields = JSON.parse(String(f)); } catch { /* keep existing */ }
+  const etVals = formData.getAll("et").map(String).filter(Boolean);
+  const types = etVals.length ? etVals.join(",") : String(formData.get("engagement_types") ?? "");
+  const nextVersion = (t.version ?? 1) + 1;
+  await m.update({
+    where: { id },
+    data: {
+      name: str(formData.get("name")) ?? t.name,
+      description: str(formData.get("description")),
+      required: formData.get("required") === "on" || formData.get("required") === "true",
+      fields_json: fields as object,
+      engagement_types: types ? types.split(",").filter(Boolean) : t.engagement_types,
+      version: nextVersion,
+      status: "DRAFT",
+      updated_by: user.id, updated_at: new Date(),
+    },
+  });
+  await saveFiles("template_logo_" + kind, id, formData);
+  const updated = await m.findUnique({ where: { id } });
+  await snapshotTemplate(kind, updated, user.id);
+  await logAudit(kind === "report" ? "Report template" : "Document template", id, "UPDATE", { name: updated.name, version: nextVersion, by: user.id });
+  revalidatePath("/templates");
+}
+
+export async function setTemplateLogo(kind: string, id: string, formData: FormData) {
+  const user = await requireUser();
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) return;
+  const f = files[0];
+  const rec = await prisma.storedFile.create({
+    data: { ...(await scope()), name: f.name, mime_type: f.type || null, size: f.size, data: Buffer.from(await f.arrayBuffer()), entity_type: "template_logo", entity_id: id },
+  });
+  await (templateModel(kind) as any).update({ where: { id }, data: { logo_file_id: rec.id, updated_by: user.id } });
+  await logAudit("Document template", id, "UPDATE", { logo: f.name, by: user.id });
+  revalidatePath("/templates");
+}
+
+export async function copyTemplate(kind: string, id: string, formData: FormData) {
+  const user = await requireUser();
+  const m = templateModel(kind) as any;
+  const t = await m.findUnique({ where: { id } });
+  if (!t) throw new Error("Template not found");
+  const copy = await m.create({
+    data: {
+      ...(await scope()),
+      name: str(formData.get("name")) ?? `${t.name} (copy)`,
+      reference: str(formData.get("reference")) ?? `${t.reference}-copy`,
+      required: t.required, files: [], section: t.section, status: "DRAFT", version: 1,
+      description: t.description, fields_json: t.fields_json ?? undefined,
+      engagement_types: t.engagement_types ?? undefined, logo_file_id: t.logo_file_id,
+    },
+  });
+  await snapshotTemplate(kind, copy, user.id);
+  await logAudit("Document template", copy.id, "INSERT", { copied_from: t.name, name: copy.name, by: user.id });
+  revalidatePath("/templates");
+}
+
+export async function approveTemplate(kind: string, id: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can approve templates");
+  const m = templateModel(kind) as any;
+  const t = await m.findUnique({ where: { id } });
+  if (!t) throw new Error("Template not found");
+  if (t.updated_by === user.id && t.status === "DRAFT") throw new Error("The person who last edited a template cannot approve it");
+  await m.update({ where: { id }, data: { status: "APPROVED", approved_by: user.id, approved_date: new Date() } });
+  await snapshotTemplate(kind, { ...t, status: "APPROVED" }, user.id, user.id);
+  await logAudit("Document template", id, "UPDATE", { status: "Approved", by: user.id });
+  revalidatePath("/templates");
+}
+
+export async function retireTemplate(kind: string, id: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can retire templates");
+  await (templateModel(kind) as any).update({ where: { id }, data: { status: "RETIRED", updated_by: user.id } });
+  await logAudit("Document template", id, "UPDATE", { status: "Retired", by: user.id });
+  revalidatePath("/templates");
+}
+
+export async function toggleTemplateRequired(kind: string, id: string) {
+  const user = await requireUser();
+  if (!canAuthorise(user)) throw new Error("Only a supervisor can change the required flag");
+  const m = templateModel(kind) as any;
+  const t = await m.findUnique({ where: { id } });
+  if (!t) throw new Error("Template not found");
+  await m.update({ where: { id }, data: { required: !t.required, updated_by: user.id } });
+  await logAudit("Document template", id, "UPDATE", { required: !t.required, by: user.id });
+  revalidatePath("/templates");
+}
+
+/** Create a working paper pre-filled from an approved fieldwork template. */
+export async function startWorkingPaperFromTemplate(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  const tplId = String(formData.get("template_id") ?? "");
+  const tpl = await prisma.planningDocumentTemplate.findUnique({ where: { id: tplId } });
+  if (!tpl || tpl.status !== "APPROVED") throw new Error("Choose an approved template");
+  const count = await prisma.workingPaper.count({ where: { engagement_id: engagementId, deleted: false } });
+  const wp = await prisma.workingPaper.create({
+    data: {
+      ...(await scope()),
+      engagement_id: engagementId,
+      reference: `WP-${String(count + 1).padStart(2, "0")}`,
+      title: tpl.name,
+      preparer_id: user.id,
+      prepared_date: new Date(),
+      status: "PREPARED",
+      template_id: tpl.id,
+      values_json: {},
+    },
+  });
+  await logAudit("Working Papers", wp.id, "INSERT", { template: tpl.name, by: user.id });
+  revalidatePath(`/engagements/${engagementId}/working-papers`);
+}

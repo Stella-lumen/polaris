@@ -1,3 +1,5 @@
+export const instant = false;
+
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";

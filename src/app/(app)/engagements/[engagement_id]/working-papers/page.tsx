@@ -1,9 +1,11 @@
+export const instant = false;
+
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { getSessionUser, canAuthorise } from "@/lib/auth";
 import { DataGrid } from "@/components/data-grid";
 import { CreateDialog } from "@/components/create-dialog";
-import { addWorkingPaper, approveWorkingPaperForm, sendBackWorkingPaperForm, markWorkingPaperReviewed, uploadWorkingPaperFiles } from "@/lib/actions";
+import { addWorkingPaper, approveWorkingPaperForm, sendBackWorkingPaperForm, markWorkingPaperReviewed, uploadWorkingPaperFiles, startWorkingPaperFromTemplate } from "@/lib/actions";
 
 const STATUS_LABEL: Record<string, string> = { PREPARED: "Prepared", REVIEWED: "Reviewed", APPROVED: "Approved", SENT_BACK: "Sent back" };
 
@@ -19,6 +21,11 @@ export default async function WorkingPapersPage({ params }: { params: Promise<{ 
   const users = new Map((await prisma.user.findMany({ where: { id: { in: userIds } } })).map((u) => [u.id, `${u.first_name} ${u.last_name}`]));
   const files = await prisma.storedFile.findMany({ where: { entity_type: "working_paper", entity_id: { in: papers.map((p) => p.id) }, deleted: false }, orderBy: { created_at: "desc" } });
   const canApprove = user ? canAuthorise(user) : false;
+  const templates = await prisma.planningDocumentTemplate.findMany({
+    where: { deleted: false, disabled: false, section: "fieldwork", status: "APPROVED" },
+    select: { id: true, reference: true, name: true },
+    orderBy: { reference: "asc" },
+  });
 
   return (
     <div className="flex flex-col gap-4">
@@ -35,6 +42,16 @@ export default async function WorkingPapersPage({ params }: { params: Promise<{ 
           ]}
         />
       </div>
+      {templates.length > 0 && (
+        <form action={startWorkingPaperFromTemplate.bind(null, engagement_id)} className="flex items-center gap-2 rounded-lg border bg-card p-3">
+          <span className="text-sm text-muted-foreground">Start from template:</span>
+          <select name="template_id" className="rounded-md border px-2 py-1 text-sm" required>
+            <option value="">Choose a fieldwork template…</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.reference} — {t.name}</option>)}
+          </select>
+          <button className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground">Create</button>
+        </form>
+      )}
       <p className="text-sm text-muted-foreground">Status flow: Prepared → Reviewed → Approved. The person who prepared a paper cannot review or approve it.</p>
       {papers.length === 0 && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">No working papers yet. Add one to record fieldwork evidence.</div>}
       <div className="flex flex-col gap-2">

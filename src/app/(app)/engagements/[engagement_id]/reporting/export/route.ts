@@ -10,6 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ engagem
   const e = await prisma.engagement.findUnique({ where: { id: engagement_id }, include: { r_engagement_type: true } });
   if (!e) return new NextResponse("Not found", { status: 404 });
   const findings = await prisma.engagementFindingAndRecommendations.findMany({ where: { engagement_id, deleted: false }, orderBy: { created_at: "asc" } });
+  const org = e.organization_id ? await prisma.organization.findUnique({ where: { id: e.organization_id }, select: { name: true, logo_file_id: true } }) : null;
+  const logo = org?.logo_file_id ? `<img src="/api/files/${org.logo_file_id}" style="height:60px" />` : "";
   const approver = e.report_approved_by ? await prisma.user.findUnique({ where: { id: e.report_approved_by }, select: { first_name: true, last_name: true } }) : null;
   const rows = findings.map((f, i) => `
     <h3>Finding ${i + 1}</h3>
@@ -20,7 +22,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ engagem
       <tr><td><b>Management comment</b></td><td>${esc(f.management_comment)}</td></tr>
     </table>`).join("");
   const html = `<html><body>
+    ${logo}
     <h1>${esc(e.engagement_name)}</h1>
+    <p><b>${esc(org?.name)}</b></p>
     <p><b>Type:</b> ${esc(e.r_engagement_type?.name)} &nbsp; <b>Period:</b> ${e.start_date?.toISOString().slice(0, 10)} to ${e.end_date?.toISOString().slice(0, 10)}</p>
     <h2>Objectives</h2><p>${esc(e.objectives)}</p>
     <h2>Scope</h2><p>${esc(e.scope_text)}</p>

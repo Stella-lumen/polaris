@@ -1,3 +1,5 @@
+export const instant = false;
+
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { DataGrid } from "@/components/data-grid";

@@ -1367,3 +1367,39 @@ CREATE TABLE IF NOT EXISTS "working_paper" (
   "updated_by" TEXT,
   "updated_at" TIMESTAMPTZ
 );
+
+-- Document template customisation (additive)
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "section" TEXT;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "version" INT DEFAULT 1;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "fields_json" JSONB;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "description" TEXT;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "logo_file_id" TEXT;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
+ALTER TABLE "planning_document_template" ADD COLUMN IF NOT EXISTS "engagement_types" JSONB;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "section" TEXT;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "status" TEXT DEFAULT 'DRAFT';
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "version" INT DEFAULT 1;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "fields_json" JSONB;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "description" TEXT;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "logo_file_id" TEXT;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "approved_by" TEXT;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "approved_date" TIMESTAMPTZ;
+ALTER TABLE "report_document_template" ADD COLUMN IF NOT EXISTS "engagement_types" JSONB;
+ALTER TABLE "working_paper" ADD COLUMN IF NOT EXISTS "template_id" TEXT;
+ALTER TABLE "working_paper" ADD COLUMN IF NOT EXISTS "values_json" JSONB;
+
+CREATE TABLE IF NOT EXISTS "template_version" (
+  "id" TEXT PRIMARY KEY,
+  "template_id" TEXT,
+  "template_kind" TEXT,
+  "version" INT,
+  "name" TEXT,
+  "description" TEXT,
+  "fields_json" JSONB,
+  "changed_by" TEXT,
+  "created_at" TIMESTAMPTZ,
+  "approved_by" TEXT,
+  "approved_date" TIMESTAMPTZ
+);

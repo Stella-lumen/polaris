@@ -81,6 +81,23 @@ const spec = {
         },
       },
     },
+    "/templates": {
+      get: {
+        tags: ["Templates"],
+        summary: "List document templates (planning, fieldwork, reporting) with fields, versions and status",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [
+          ...listParams,
+          { name: "section", in: "query", schema: { type: "string", enum: ["planning", "fieldwork", "reporting"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["draft", "approved", "retired"] } },
+        ],
+        responses: {
+          "200": { description: "Templates with field definitions, version, status, engagement-type links and approval info. Scope: templates:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks templates:read" },
+        },
+      },
+    },
     "/audit-plans": listGet("Planning", "List annual audit plans", "audit-plan:read"),
     "/risk-assessments": {
       get: {

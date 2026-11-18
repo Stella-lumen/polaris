@@ -27,6 +27,7 @@ CREATE TABLE "annual_audit_plan" (
     "period_id" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" DATETIME,
+    "prepared_on_behalf_of_user_id" TEXT,
     "authorised_by_id" TEXT,
     "authorised_date" DATETIME,
     "organization_id" TEXT,
@@ -40,6 +41,7 @@ CREATE TABLE "annual_audit_plan" (
     "deleted_at" DATETIME,
     CONSTRAINT "annual_audit_plan_period_id_fkey" FOREIGN KEY ("period_id") REFERENCES "annual_audit_plan_period" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "annual_audit_plan_prepared_by_id_fkey" FOREIGN KEY ("prepared_by_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "annual_audit_plan_prepared_on_behalf_of_user_id_fkey" FOREIGN KEY ("prepared_on_behalf_of_user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "annual_audit_plan_authorised_by_id_fkey" FOREIGN KEY ("authorised_by_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "annual_audit_plan_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -786,3 +788,33 @@ CREATE TABLE "expense" (
     CONSTRAINT "expense_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
+
+
+-- CreateTable
+CREATE TABLE "delegation" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "delegate_user_id" TEXT,
+    "principal_user_id" TEXT,
+    "scope_kind" TEXT,
+    "engagement_id" TEXT,
+    "start_date" DATETIME,
+    "end_date" DATETIME,
+    "status" TEXT DEFAULT 'ACTIVE',
+    "reason" TEXT,
+    "revoked_by_user_id" TEXT,
+    "revoked_at" DATETIME,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" DATETIME,
+    "updated_by" TEXT,
+    "updated_at" DATETIME,
+    "deleted_by" TEXT,
+    "deleted_at" DATETIME,
+    CONSTRAINT "delegation_delegate_user_id_fkey" FOREIGN KEY ("delegate_user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "delegation_principal_user_id_fkey" FOREIGN KEY ("principal_user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "delegation_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "delegation_revoked_by_user_id_fkey" FOREIGN KEY ("revoked_by_user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "delegation_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);

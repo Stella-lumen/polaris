@@ -31,6 +31,7 @@ CREATE TABLE "annual_audit_plan" (
     "period_id" TEXT,
     "prepared_by_id" TEXT,
     "prepared_date" TIMESTAMP(3),
+    "prepared_on_behalf_of_user_id" TEXT,
     "authorised_by_id" TEXT,
     "authorised_date" TIMESTAMP(3),
     "status" TEXT DEFAULT 'DRAFT',
@@ -1490,3 +1491,36 @@ CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON "audit_log" FOR EACH ROW EXE
 
 -- One open financial year at a time per organization
 CREATE UNIQUE INDEX "one_open_financial_year" ON "annual_audit_plan_period" ("organization_id") WHERE "period_type" = 'FY' AND "status" = 'OPEN' AND "deleted" = false;
+
+
+-- CreateTable
+CREATE TABLE "delegation" (
+    "id" TEXT NOT NULL,
+    "delegate_user_id" TEXT,
+    "principal_user_id" TEXT,
+    "scope_kind" TEXT,
+    "engagement_id" TEXT,
+    "start_date" TIMESTAMP(3),
+    "end_date" TIMESTAMP(3),
+    "status" TEXT DEFAULT 'ACTIVE',
+    "reason" TEXT,
+    "revoked_by_user_id" TEXT,
+    "revoked_at" TIMESTAMP(3),
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMP(3),
+    CONSTRAINT "delegation_pkey" PRIMARY KEY ("id")
+);
+
+ALTER TABLE "annual_audit_plan" ADD CONSTRAINT "annual_audit_plan_prepared_on_behalf_of_user_id_fkey" FOREIGN KEY ("prepared_on_behalf_of_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "delegation" ADD CONSTRAINT "delegation_delegate_user_id_fkey" FOREIGN KEY ("delegate_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "delegation" ADD CONSTRAINT "delegation_principal_user_id_fkey" FOREIGN KEY ("principal_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "delegation" ADD CONSTRAINT "delegation_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "delegation" ADD CONSTRAINT "delegation_revoked_by_user_id_fkey" FOREIGN KEY ("revoked_by_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "delegation" ADD CONSTRAINT "delegation_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;

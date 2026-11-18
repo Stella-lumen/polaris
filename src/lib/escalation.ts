@@ -23,7 +23,7 @@ export async function escalateOverdueWork() {
   const now = new Date();
   const DAY = 86400_000;
 
-  const [tasks, actions, rules, users, auditors, activeDecls, declSignRows] = await Promise.all([
+  const [tasks, actions, rules, users, auditors, activeDecls, declSignRows, delegations] = await Promise.all([
     prisma.task.findMany({
       where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, status: { notIn: ["DONE", "CLOSED"] } },
       include: { r_assignee: true, r_engagement: true },
@@ -40,6 +40,10 @@ export async function escalateOverdueWork() {
     }),
     prisma.declaration.findMany({ where: { deleted: false, disabled: false }, select: { id: true } }),
     prisma.engagementAuditorDeclaration.findMany({ where: { deleted: false } }),
+    prisma.delegation.findMany({
+      where: { deleted: false, disabled: false, status: "ACTIVE", end_date: { not: null }, organization_id: DEMO_ORGANIZATION_ID },
+      include: { r_delegate: true, r_principal: true },
+    }),
   ]);
   const byId = new Map(users.map((u) => [u.id, u]));
   const caeEmails = users.filter((u) => u.role === "org:chief_audit_executive").map((u) => u.email).filter(Boolean) as string[];
@@ -49,6 +53,7 @@ export async function escalateOverdueWork() {
   const taskRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "task");
   const caRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "corrective_action");
   const declRules = rules.filter((r) => r.entity_kind === "declaration");
+  const delegationRules = rules.filter((r) => r.entity_kind === "delegation");
 
   type Notice = { kind: string; itemId: string; level: number; ruleId: string; to: string[]; cc: string[]; subject: string; reason: string; body: string };
   const notices: Notice[] = [];
@@ -181,6 +186,36 @@ export async function escalateOverdueWork() {
     }
   }
 
+  // --- delegations: reminder before the end date ---
+  const fullName = (u: { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined) =>
+    u ? [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email || "a user" : "a user";
+  for (const d of delegations) {
+    const ctx = {
+      daysToDue: d.end_date ? Math.floor((d.end_date.getTime() - now.getTime()) / DAY) : null,
+      daysOverdue: null,
+      daysUnverified: null,
+      status: d.status,
+    };
+    const winner = delegationRules.filter((r) => r.trigger === "DELEGATION_EXPIRY_DAYS" && ruleFires(r.trigger, r.days, ctx)).pop();
+    if (!winner) continue;
+    const level = delegationRules.indexOf(winner) + 1;
+    const delegateName = fullName(d.r_delegate);
+    const principalName = fullName(d.r_principal);
+    const to = [d.r_delegate?.email].filter(Boolean) as string[];
+    const cc: string[] = [];
+    if (d.r_principal?.email) cc.push(d.r_principal.email);
+    if (winner.notify_cae) cc.push(...caeEmails);
+    if (winner.notify_hod || level >= 2) cc.push(...adminEmails);
+    const reason = `Delegation expires in ${ctx.daysToDue} day${ctx.daysToDue === 1 ? "" : "s"} — ${delegateName} preparing for ${principalName}`;
+    notices.push({
+      kind: "delegation", itemId: d.id, level, ruleId: winner.id,
+      to: to.length ? to : [fallback].filter(Boolean), cc,
+      subject: reason,
+      reason,
+      body: `${delegateName}'s delegation to prepare on behalf of ${principalName} ends on ${d.end_date?.toISOString().slice(0, 10) ?? "an unset date"}. Extend it under Admin → Delegated preparers if it should continue.`,
+    });
+  }
+
   // Deliver each notice once per level per recipient.
   let sent = 0;
   for (const n of notices) {
@@ -200,7 +235,7 @@ export async function escalateOverdueWork() {
     });
     await deliverEmail(row.id);
     await logAudit(
-      n.kind === "task" ? "Tasks" : n.kind === "declaration" ? "Engagement Auditor Declarations" : "Corrective Actions",
+      n.kind === "task" ? "Tasks" : n.kind === "declaration" ? "Engagement Auditor Declarations" : n.kind === "delegation" ? "Delegations" : "Corrective Actions",
       n.itemId,
       "NOTIFICATION",
       { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },

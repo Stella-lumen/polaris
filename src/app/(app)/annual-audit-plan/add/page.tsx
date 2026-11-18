@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { DEMO_ORGANIZATION_ID } from "@/lib/context";
 import { actorId, canAuthorise, requireUser } from "@/lib/auth";
+import { delegationFor, logAudit } from "@/lib/actions";
 
 export const instant = false;
 
@@ -10,7 +11,10 @@ async function createPlan(formData: FormData) {
   "use server";
   const uid = await actorId();
   const user = await requireUser();
-  const authorise = formData.get("intent") === "authorise" && canAuthorise(user);
+  if (formData.get("intent") === "authorise" && user.role === "org:delegated_preparer")
+    throw new Error("A delegated preparer can prepare work but can never approve it — a supervisor must approve.");
+  const onBehalfOf = await delegationFor(uid, "AUDIT_PLANS");
+  const authorise = formData.get("intent") === "authorise" && canAuthorise(user) && !onBehalfOf;
   const plan = await prisma.annualAuditPlan.create({
     data: {
       organization_id: DEMO_ORGANIZATION_ID,
@@ -19,6 +23,7 @@ async function createPlan(formData: FormData) {
       period_id: String(formData.get("period_id") || "") || null,
       prepared_by_id: uid,
       prepared_date: new Date(),
+      prepared_on_behalf_of_user_id: onBehalfOf,
       authorised_by_id: authorise ? uid : null,
       authorised_date: authorise ? new Date() : null,
       created_by: uid,
@@ -27,6 +32,14 @@ async function createPlan(formData: FormData) {
       updated_at: new Date(),
     },
   });
+  if (onBehalfOf) {
+    const principal = await prisma.user.findUnique({ where: { id: onBehalfOf } });
+    const preparer = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+    const principalName = principal ? `${principal.first_name ?? ""} ${principal.last_name ?? ""}`.trim() || principal.email : "a colleague";
+    await logAudit("Audit plans", plan.id, "INSERT", {
+      message: `${preparer} prepared the plan "${plan.name}" on behalf of ${principalName}`,
+    });
+  }
   redirect(`/annual-audit-plan/${plan.id}`);
 }
 

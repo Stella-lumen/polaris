@@ -433,6 +433,152 @@ export async function addDelegatedPreparer(formData: FormData) {
   revalidatePath("/admin/users");
 }
 
+// ---------- delegations ----------
+
+const DELEGATION_SCOPES = new Set(["AUDIT_PLANS", "WORKING_PAPERS", "REPORTS", "RISK_ASSESSMENTS", "ENGAGEMENT"]);
+
+function delegationData(formData: FormData) {
+  const scope_kind = str(formData.get("scope_kind"));
+  return {
+    delegate_user_id: str(formData.get("delegate_user_id")),
+    principal_user_id: str(formData.get("principal_user_id")),
+    scope_kind,
+    engagement_id: scope_kind === "ENGAGEMENT" ? str(formData.get("engagement_id")) : null,
+    start_date: date(formData.get("start_date")),
+    end_date: date(formData.get("end_date")),
+    reason: str(formData.get("reason")),
+  };
+}
+
+async function checkDelegationData(d: ReturnType<typeof delegationData>) {
+  if (!d.delegate_user_id) throw new Error("Choose who will prepare the work");
+  if (!d.principal_user_id) throw new Error("Choose who they are preparing for");
+  if (d.delegate_user_id === d.principal_user_id) throw new Error("A person cannot delegate to themselves");
+  if (!d.scope_kind || !DELEGATION_SCOPES.has(d.scope_kind)) throw new Error("Choose what they may prepare");
+  if (d.scope_kind === "ENGAGEMENT" && !d.engagement_id) throw new Error("Choose the engagement this delegation covers");
+  if (d.start_date && d.end_date && d.end_date <= d.start_date)
+    throw new Error("The end date must be after the start date");
+  const overlap = await prisma.delegation.findFirst({
+    where: {
+      deleted: false, disabled: false, status: "ACTIVE",
+      delegate_user_id: d.delegate_user_id, principal_user_id: d.principal_user_id,
+      scope_kind: d.scope_kind, engagement_id: d.engagement_id,
+    },
+  });
+  return { d, overlap };
+}
+
+const fullName = (u: { first_name?: string | null; last_name?: string | null; email?: string | null } | null | undefined) =>
+  u ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.email || "Not assigned" : "Not assigned";
+
+export async function addDelegation(formData: FormData) {
+  const admin = await requireRole(["org:admin"]);
+  const { d, overlap } = await checkDelegationData(delegationData(formData));
+  if (overlap) throw new Error("This delegation already exists for that person, scope and delegate");
+  const row = await prisma.delegation.create({ data: { ...(await scope()), ...d, status: "ACTIVE" } });
+  // Holding a delegation is what makes someone a delegated preparer.
+  await prisma.user.update({ where: { id: d.delegate_user_id! }, data: { role: "org:delegated_preparer" } });
+  const [del, prin] = await Promise.all([
+    prisma.user.findUnique({ where: { id: d.delegate_user_id! } }),
+    prisma.user.findUnique({ where: { id: d.principal_user_id! } }),
+  ]);
+  await logAudit("Delegations", row.id, "INSERT",
+    { message: `${fullName(admin)} gave ${fullName(del)} a delegation to prepare ${d.scope_kind === "ENGAGEMENT" ? "one engagement" : d.scope_kind!.toLowerCase().replace(/_/g, " ")} on behalf of ${fullName(prin)}${d.end_date ? ` until ${d.end_date.toISOString().slice(0, 10)}` : " with no end date"}` },
+    { userId: admin.id, recordLabel: `${fullName(del)} for ${fullName(prin)}` });
+  revalidatePath("/admin/delegated-preparers");
+}
+
+export async function updateDelegation(id: string, formData: FormData) {
+  const admin = await requireRole(["org:admin"]);
+  const existing = await prisma.delegation.findFirst({ where: { id, deleted: false } });
+  if (!existing) throw new Error("Delegation not found");
+  const { d } = await checkDelegationData(delegationData(formData));
+  const row = await prisma.delegation.update({ where: { id }, data: { ...d, updated_by: admin.id, updated_at: new Date() } });
+  const [del, prin] = await Promise.all([
+    prisma.user.findUnique({ where: { id: d.delegate_user_id! } }),
+    prisma.user.findUnique({ where: { id: d.principal_user_id! } }),
+  ]);
+  await logAudit("Delegations", id, "UPDATE",
+    { message: `${fullName(admin)} updated the delegation for ${fullName(del)} to prepare on behalf of ${fullName(prin)}` },
+    { userId: admin.id, recordLabel: `${fullName(del)} for ${fullName(prin)}`, originalValues: existing });
+  revalidatePath("/admin/delegated-preparers");
+}
+
+/** Revoke keeps everything the delegate already prepared — only future use stops. */
+export async function revokeDelegation(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const row = await prisma.delegation.findFirst({ where: { id, deleted: false }, include: { r_delegate: true, r_principal: true } });
+  if (!row) throw new Error("Delegation not found");
+  if (row.status === "REVOKED") return;
+  await prisma.delegation.update({
+    where: { id },
+    data: { status: "REVOKED", revoked_by_user_id: admin.id, revoked_at: new Date(), updated_by: admin.id, updated_at: new Date() },
+  });
+  await revertRoleIfNoDelegations(row.delegate_user_id);
+  await logAudit("Delegations", id, "UPDATE",
+    { message: `${fullName(admin)} revoked ${fullName(row.r_delegate)}'s delegation to prepare on behalf of ${fullName(row.r_principal)} — work already prepared stays` },
+    { userId: admin.id, recordLabel: `${fullName(row.r_delegate)} for ${fullName(row.r_principal)}`, originalValues: { status: row.status } });
+  revalidatePath("/admin/delegated-preparers");
+}
+
+/** When a delegate holds no active delegation left, their role reverts to a normal member. */
+async function revertRoleIfNoDelegations(delegateUserId: string | null) {
+  if (!delegateUserId) return;
+  const remaining = await prisma.delegation.count({
+    where: { deleted: false, disabled: false, status: "ACTIVE", delegate_user_id: delegateUserId },
+  });
+  if (!remaining) await prisma.user.update({ where: { id: delegateUserId }, data: { role: "org:member" } });
+}
+
+/** Mark past-due ACTIVE delegations EXPIRED and log each one. Returns expired rows. */
+export async function syncDelegationExpiries() {
+  const due = await prisma.delegation.findMany({
+    where: { deleted: false, disabled: false, status: "ACTIVE", end_date: { lt: new Date() } },
+    include: { r_delegate: true, r_principal: true },
+  });
+  for (const d of due) {
+    await prisma.delegation.update({ where: { id: d.id }, data: { status: "EXPIRED", updated_at: new Date() } });
+    await revertRoleIfNoDelegations(d.delegate_user_id);
+    await logAudit("Delegations", d.id, "UPDATE",
+      { message: `${fullName(d.r_delegate)}'s delegation to prepare on behalf of ${fullName(d.r_principal)} expired` },
+      { system: true, recordLabel: `${fullName(d.r_delegate)} for ${fullName(d.r_principal)}` });
+  }
+  return due;
+}
+
+/**
+ * Can `userId` prepare `scope` work right now?
+ *  - ordinary user: returns null (no delegation needed)
+ *  - delegate with a covering delegation: returns the principal's user id
+ *  - delegate without one: throws a plain-words reason
+ */
+export async function delegationFor(
+  userId: string,
+  scope: "AUDIT_PLANS" | "WORKING_PAPERS" | "REPORTS" | "RISK_ASSESSMENTS" | "ENGAGEMENT",
+  engagementId?: string | null,
+): Promise<string | null> {
+  const { delegationAllows } = await import("@/lib/delegations");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (user?.role !== "org:delegated_preparer") return null;
+  await syncDelegationExpiries();
+  const rows = await prisma.delegation.findMany({
+    where: { deleted: false, disabled: false, status: "ACTIVE", delegate_user_id: userId },
+    include: { r_principal: true },
+  });
+  let firstReason: string | null = null;
+  for (const d of rows) {
+    const reason = delegationAllows(d, scope, engagementId);
+    if (!reason) return d.principal_user_id;
+    firstReason ??= reason;
+  }
+  const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+  throw new Error(
+    firstReason
+      ? `${name} is a delegated preparer — ${firstReason.charAt(0).toLowerCase()}${firstReason.slice(1)}`
+      : `${name} is a delegated preparer but has no active delegation for this work. Ask an administrator to set one up.`,
+  );
+}
+
 export async function createGuidingDocument(formData: FormData) {
   await requireRole(["org:admin", "org:chief_audit_executive"]);
   const g = await prisma.guidingDocument.create({
@@ -841,6 +987,8 @@ export async function signoffDoc(
 ) {
   const user = await requireUser();
   const aud = await auditorFor(engagementId, user.id);
+  if (step === "prepare" && user.role === "org:delegated_preparer")
+    await delegationFor(user.id, "ENGAGEMENT", engagementId); // throws if no covering delegation
   let data: Record<string, unknown> = { updated_by: user.id };
   if (step === "prepare") {
     data = stage === "declaration"
@@ -850,6 +998,8 @@ export async function signoffDoc(
     if (stage === "declaration" || stage === "finding") throw new Error("This item has no review step");
     data = { ...data, nominated_reviewer_id: reviewerId ?? aud.id };
   } else {
+    if (user.role === "org:delegated_preparer")
+      throw new Error("A delegated preparer can prepare work but can never approve it — a supervisor must approve.");
     if (!canAuthorise(user)) throw new Error("Only Admin or CAE can authorise");
     data = { ...data, authorised_by_engagement_auditor_id: aud.id, authorised_date: new Date() };
   }
@@ -2039,6 +2189,8 @@ export async function submitPlan(id: string) {
 
 export async function authorisePlan(id: string, formData: FormData) {
   const user = await requireUser();
+  if (user.role === "org:delegated_preparer")
+    throw new Error("A delegated preparer can prepare work but can never approve it — a supervisor must approve.");
   if (!canAuthorise(user)) throw new Error("Only a supervisor can authorise an audit plan");
   const plan = await prisma.annualAuditPlan.findUnique({ where: { id } });
   if (!plan) throw new Error("Plan not found");

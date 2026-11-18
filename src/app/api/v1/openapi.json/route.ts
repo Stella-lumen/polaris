@@ -170,6 +170,19 @@ const spec = {
       },
     },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
+    "/delegations": {
+      get: {
+        tags: ["Delegations"],
+        summary: "List delegated preparer arrangements",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Delegations with delegate, principal, scope, dates, status and warnings. Scope: delegations:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks delegations:read" },
+        },
+      },
+    },
     "/declarations": {
       get: {
         tags: ["Declarations"],

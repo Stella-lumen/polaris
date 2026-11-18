@@ -61,6 +61,7 @@ export type ToggleConfig = {
 };
 
 export type WorkflowConfig = {
+  doneValues?: string[];
   steps: string[];
   onAdvance: (id: string, status: string) => Promise<unknown>;
 };
@@ -179,7 +180,7 @@ function WorkflowCell({ data, config }: { data: Record<string, unknown>; config:
   const [busy, setBusy] = useState(false);
   const status = String(data.status ?? config.steps[0]);
   const idx = config.steps.indexOf(status);
-  const done = idx === config.steps.length - 1;
+  const done = idx === config.steps.length - 1 || (config.doneValues?.includes(status) ?? false);
   const next = config.steps[idx + 1];
   return done ? (
     <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">

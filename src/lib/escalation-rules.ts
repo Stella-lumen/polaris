@@ -24,5 +24,9 @@ export function ruleFires(
   if (trigger === "DECL_UNSIGNED_AFTER_START") return ctx.daysOverdue != null && ctx.daysOverdue >= d;
   if (trigger === "DECL_CONFLICT_OPEN_DAYS") return ctx.daysUnverified != null && ctx.daysUnverified >= d;
   if (trigger === "DECL_REDECLARE_DAYS") return ctx.daysUnverified != null && ctx.daysUnverified >= d;
+  // Delegation triggers — an expired or revoked delegation never escalates.
+  // ctx.daysToDue = days until the delegation's end date.
+  if (ctx.status === "EXPIRED" || ctx.status === "REVOKED") return false;
+  if (trigger === "DELEGATION_EXPIRY_DAYS") return ctx.daysToDue != null && ctx.daysToDue >= 0 && ctx.daysToDue <= d;
   return false;
 }

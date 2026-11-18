@@ -41,6 +41,8 @@ model AnnualAuditPlan {
   r_prepared_by   User? @relation("prepared_by", fields: [prepared_by_id], references: [id])
   prepared_by_id   String?
   prepared_date DateTime?
+  r_prepared_on_behalf_of   User? @relation("prepared_on_behalf", fields: [prepared_on_behalf_of_user_id], references: [id])
+  prepared_on_behalf_of_user_id String?
   r_authorised_by   User? @relation("authorised_by", fields: [authorised_by_id], references: [id])
   authorised_by_id   String?
   authorised_date DateTime?
@@ -62,6 +64,37 @@ model AnnualAuditPlan {
   plannedEngagements_annual_audit_plan   PlannedEngagement[] @relation("annual_audit_plan")
   engagements_annual_audit_plan   Engagement[] @relation("annual_audit_plan")
   @@map("annual_audit_plan")
+}
+
+// A controlled, time-limited arrangement: the delegate may prepare work
+// in the given scope on the principal's behalf — but may never approve it.
+model Delegation {
+  id String   @id @default(ulid())
+  r_delegate   User? @relation("delegation_delegate", fields: [delegate_user_id], references: [id])
+  delegate_user_id String?
+  r_principal   User? @relation("delegation_principal", fields: [principal_user_id], references: [id])
+  principal_user_id String?
+  scope_kind String?  // AUDIT_PLANS|WORKING_PAPERS|REPORTS|RISK_ASSESSMENTS|ENGAGEMENT
+  r_engagement   Engagement? @relation("delegation_engagement", fields: [engagement_id], references: [id])
+  engagement_id String?
+  start_date DateTime?
+  end_date DateTime?
+  status String? @default("ACTIVE")  // ACTIVE|EXPIRED|REVOKED
+  reason String?
+  r_revoked_by   User? @relation("delegation_revoked_by", fields: [revoked_by_user_id], references: [id])
+  revoked_by_user_id String?
+  revoked_at DateTime?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("delegation")
 }
 
 model GuidingDocument {
@@ -379,6 +412,7 @@ model Engagement {
   tasks_engagement   Task[] @relation("tasks")
   timeEntries_engagement   TimeEntry[] @relation("time_entries")
   expenses_engagement   Expense[] @relation("expenses")
+  delegations_engagement   Delegation[] @relation("delegation_engagement")
   @@map("engagement")
 }
 
@@ -783,6 +817,7 @@ model Organization {
   reportDocumentTemplates_organization   ReportDocumentTemplate[] @relation("organization")
   reviewNotes_organization   ReviewNote[] @relation("organization")
   apiKeys_organization   ApiKey[] @relation("organization")
+  delegations_organization   Delegation[] @relation("organization")
   strategicObjectives_organization   StrategicObjective[] @relation("organization")
   riskRatingBands_organization   RiskRatingBand[] @relation("organization")
   escalationRules_organization   EscalationRule[] @relation("organization")
@@ -843,7 +878,11 @@ model User {
   deleted_by String?
   deleted_at DateTime?
   annualAuditPlans_prepared_by   AnnualAuditPlan[] @relation("prepared_by")
+  annualAuditPlans_prepared_on_behalf   AnnualAuditPlan[] @relation("prepared_on_behalf")
   annualAuditPlans_authorised_by   AnnualAuditPlan[] @relation("authorised_by")
+  delegations_delegate   Delegation[] @relation("delegation_delegate")
+  delegations_principal   Delegation[] @relation("delegation_principal")
+  delegations_revoked_by   Delegation[] @relation("delegation_revoked_by")
   plannedEngagements_assigned_senior_auditor   PlannedEngagement[] @relation("assigned_senior_auditor")
   plannedEngagements_prepared_by   PlannedEngagement[] @relation("prepared_by")
   plannedEngagements_authorised_by   PlannedEngagement[] @relation("authorised_by")

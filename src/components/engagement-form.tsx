@@ -41,6 +41,7 @@ export function EngagementForm({
   plans,
   plannedEngagements,
   types,
+  typeDefaults = {},
   users,
   initialOutsourcedId = "",
   initialTeam = [],
@@ -61,6 +62,7 @@ export function EngagementForm({
   plans: Opt[];
   plannedEngagements: PlannedOpt[];
   types: Opt[];
+  typeDefaults?: Record<string, string>;
   users: Opt[];
   initialOutsourcedId?: string;
   initialTeam?: TeamRow[];
@@ -71,6 +73,7 @@ export function EngagementForm({
   const [planId, setPlanId] = useState(engagement.annual_audit_plan_id ?? "");
   const [plannedId, setPlannedId] = useState(engagement.planned_engagement_id ?? "");
   const [typeId, setTypeId] = useState(engagement.engagement_type_id ?? "");
+  const [useDefaults, setUseDefaults] = useState(true);
   const [outsourcedId, setOutsourcedId] = useState(initialOutsourcedId);
   const [team, setTeam] = useState<TeamRow[]>(initialTeam);
 
@@ -90,6 +93,7 @@ export function EngagementForm({
       annual_audit_plan_id: planId || null,
       planned_engagement_id: plannedId || null,
       engagement_type_id: typeId || null,
+      use_type_defaults: isNew && useDefaults,
       start_date: String(fd.get("start_date") ?? "") || null,
       end_date: String(fd.get("end_date") ?? "") || null,
       engagement_budget: fd.get("engagement_budget") ? Number(fd.get("engagement_budget")) : null,
@@ -149,6 +153,16 @@ export function EngagementForm({
               {types.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </Field>
+          {isNew && typeId && typeDefaults[typeId] && (
+            <Field label="Type defaults">
+              <label className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50/60 px-3 py-2 text-sm">
+                <input type="checkbox" checked={useDefaults} onChange={(e) => setUseDefaults(e.target.checked)} className="mt-0.5 h-4 w-4 accent-orange-600" />
+                <span>
+                  Apply this type's defaults — <span className="text-muted-foreground">{typeDefaults[typeId]}</span>
+                </span>
+              </label>
+            </Field>
+          )}
         </div>
       </div>
 

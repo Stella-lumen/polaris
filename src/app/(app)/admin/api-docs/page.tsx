@@ -23,6 +23,8 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/health", "Validate the key (any scope)"],
   ["GET", "/engagements", "List engagements"],
   ["GET", "/engagements/{id}", "Engagement detail"],
+  ["GET", "/engagement-types", "Engagement types + default-config counts"],
+  ["GET", "/engagement-types/{id}", "Type defaults: templates, checklist, budget guide"],
   ["GET", "/audit-plans", "Annual audit plans"],
   ["GET", "/risk-assessments", "Risk register"],
   ["GET", "/findings", "Findings + lifecycle status"],

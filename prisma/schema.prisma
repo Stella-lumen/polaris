@@ -298,6 +298,9 @@ model EngagementType {
   id String   @id @default(ulid())
   name String?
   description String?
+  default_templates Json?
+  default_hours Decimal?
+  default_budget Decimal?
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   disabled Boolean  @default(false)

@@ -52,6 +52,7 @@ export async function createEngagement(payload: {
   annual_audit_plan_id: string | null;
   planned_engagement_id: string | null;
   engagement_type_id: string | null;
+  use_type_defaults?: boolean;
   start_date: string | null;
   end_date: string | null;
   engagement_budget: number | null;
@@ -93,6 +94,9 @@ export async function createEngagement(payload: {
     });
   }
   await logAudit("Engagement", e.id, "INSERT", e);
+  if (payload.use_type_defaults && payload.engagement_type_id) {
+    try { await applyTypeDefaults(e.id, payload.engagement_type_id); } catch { /* defaults are a convenience — never block creation */ }
+  }
   revalidatePath("/engagements");
   return e.id;
 }
@@ -1999,4 +2003,113 @@ export async function verifyAuditTrail() {
     : `The audit trail is broken at entry ${r.firstBadIndex + 1} — ${r.reason}`;
   await logAudit("Security", "audit-trail", "UPDATE", { message: `Verified the audit trail — ${message}` });
   return { ok: r.ok, message };
+}
+
+// ---- engagement type settings ----
+
+export async function updateEngagementType(id: string, formData: FormData) {
+  const user = await requireRole(["org:admin"]);
+  const t = await prisma.engagementType.update({
+    where: { id },
+    data: {
+      name: str(formData.get("name")),
+      description: str(formData.get("description")),
+      updated_by: user.id, updated_at: new Date(),
+    },
+  });
+  await logAudit("Engagement Types", id, "UPDATE", { name: t.name, description: t.description });
+  revalidatePath("/admin/engagement-types");
+}
+
+export async function setEngagementTypeDisabled(id: string, disabled: boolean) {
+  const user = await requireRole(["org:admin"]);
+  const t = await prisma.engagementType.update({ where: { id }, data: { disabled, updated_by: user.id, updated_at: new Date() } });
+  await logAudit("Engagement Types", id, "UPDATE", { message: `${disabled ? "Disabled" : "Enabled"} engagement type "${t.name}" — existing engagements are not affected` });
+  revalidatePath("/admin/engagement-types");
+}
+
+export async function saveTypeDefaults(id: string, formData: FormData) {
+  const user = await requireRole(["org:admin"]);
+  const templates = {
+    planning: str(formData.get("planning_template")),
+    fieldwork: str(formData.get("fieldwork_template")),
+    reporting: str(formData.get("reporting_template")),
+  };
+  const hours = formData.get("default_hours") ? Number(formData.get("default_hours")) : null;
+  const budget = formData.get("default_budget") ? Number(formData.get("default_budget")) : null;
+  const t = await prisma.engagementType.update({
+    where: { id },
+    data: { default_templates: templates, default_hours: hours, default_budget: budget, updated_by: user.id, updated_at: new Date() },
+  });
+  await logAudit("Engagement Types", id, "UPDATE", { message: `Updated default templates and budget guide for "${t.name}"` });
+  revalidatePath(`/admin/engagement-types/${id}`);
+}
+
+export async function addTypeTask(typeId: string, formData: FormData) {
+  const user = await requireRole(["org:admin"]);
+  const t = await prisma.engagementType.findUnique({ where: { id: typeId } });
+  if (!t) throw new Error("Engagement type not found");
+  const sort = ((await prisma.taskTemplate.findFirst({ where: { engagement_type_id: typeId, deleted: false }, orderBy: { sort: "desc" }, select: { sort: true } }))?.sort ?? 0) + 1;
+  await prisma.taskTemplate.create({
+    data: {
+      organization_id: DEMO_ORGANIZATION_ID,
+      engagement_type_id: typeId,
+      title: str(formData.get("title")),
+      stage: str(formData.get("stage")),
+      days_offset: Number(formData.get("days_offset") ?? 0),
+      default_role: str(formData.get("default_role")),
+      planned_hours: formData.get("planned_hours") ? Number(formData.get("planned_hours")) : null,
+      sort,
+      created_at: new Date(),
+    },
+  });
+  await logAudit("Engagement Types", typeId, "UPDATE", { message: `Added checklist task "${str(formData.get("title"))}" to "${t.name}"` });
+  revalidatePath(`/admin/engagement-types/${typeId}`);
+}
+
+export async function removeTypeTask(taskId: string) {
+  const user = await requireRole(["org:admin"]);
+  const task = await prisma.taskTemplate.findUnique({ where: { id: taskId } });
+  if (!task) throw new Error("Checklist task not found");
+  await prisma.taskTemplate.update({ where: { id: taskId }, data: { deleted: true } });
+  const t = task.engagement_type_id ? await prisma.engagementType.findUnique({ where: { id: task.engagement_type_id } }) : null;
+  await logAudit("Engagement Types", task.engagement_type_id ?? "org-wide", "UPDATE", { message: `Removed checklist task "${task.title}"${t ? ` from "${t.name}"` : ""}` });
+  revalidatePath(`/admin/engagement-types/${task.engagement_type_id}`);
+}
+
+/** Apply a type's defaults to a brand-new engagement: budget guide,
+ *  document template links and the stage checklist. Never overwrites
+ *  anything the user already entered. */
+async function applyTypeDefaults(engagementId: string, typeId: string) {
+  const t = await prisma.engagementType.findUnique({ where: { id: typeId } });
+  if (!t) return;
+  const eng = await prisma.engagement.findUnique({ where: { id: engagementId } });
+  if (!eng) return;
+  const dt = (t.default_templates as { planning?: string; fieldwork?: string; reporting?: string } | null) ?? {};
+  if (t.default_budget != null && eng.engagement_budget == null) {
+    await prisma.engagement.update({ where: { id: engagementId }, data: { engagement_budget: t.default_budget } });
+  }
+  await ensureStageDocs(engagementId);
+  if (dt.planning) await prisma.engagementPlanningDocument.updateMany({ where: { engagement_id: engagementId, planning_document_template_id: null }, data: { planning_document_template_id: dt.planning } });
+  if (dt.reporting) await prisma.engagementReportDocument.updateMany({ where: { engagement_id: engagementId, report_document_template_id: null }, data: { report_document_template_id: dt.reporting } });
+  const templates = await prisma.taskTemplate.findMany({ where: { deleted: false, engagement_type_id: typeId }, orderBy: { sort: "asc" } });
+  const team = await prisma.engagementTeamMember.findMany({ where: { engagement_id: engagementId, deleted: false } });
+  const roleMap: Record<string, string | null> = {};
+  for (const m of team) if (m.role && !roleMap[m.role]) roleMap[m.role] = m.user_id;
+  const lead = team.find((m) => m.role === "LEAD")?.user_id ?? team[0]?.user_id ?? null;
+  const base = eng.start_date ?? new Date();
+  for (const tp of templates) {
+    const due = new Date(base);
+    due.setDate(due.getDate() + (tp.days_offset ?? 0));
+    await prisma.task.create({
+      data: {
+        organization_id: eng.organization_id,
+        title: tp.title, stage: tp.stage, engagement_id: engagementId,
+        assignee_user_id: roleMap[tp.default_role ?? ""] ?? lead,
+        supervisor_user_id: lead,
+        due_date: due, planned_hours: tp.planned_hours, status: "OPEN",
+      },
+    });
+  }
+  await logAudit("Engagement", engagementId, "UPDATE", { message: `Applied defaults from engagement type "${t.name}" — ${templates.length} checklist task${templates.length === 1 ? "" : "s"} created` });
 }

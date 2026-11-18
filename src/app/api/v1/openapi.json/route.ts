@@ -170,6 +170,33 @@ const spec = {
       },
     },
     "/tasks": listGet("Tasks", "List scheduled tasks with assignees and due dates", "tasks:read"),
+    "/engagement-types": {
+      get: {
+        tags: ["Engagements"],
+        summary: "List engagement types with usage and default-configuration counts",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Engagement types with engagement counts and default template/task counts. Scope: engagements:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks engagements:read" },
+        },
+      },
+    },
+    "/engagement-types/{id}": {
+      get: {
+        tags: ["Engagements"],
+        summary: "Get an engagement type with its default templates, checklist and budget guide",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "Engagement type with named default templates, stage checklist, hours and budget guide. Scope: engagements:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks engagements:read" },
+          "404": { description: "Engagement type not found" },
+        },
+      },
+    },
     "/notifications": {
       get: {
         tags: ["Notifications"],

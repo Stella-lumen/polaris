@@ -23,7 +23,7 @@ export async function escalateOverdueWork() {
   const now = new Date();
   const DAY = 86400_000;
 
-  const [tasks, actions, rules, users, auditors, activeDecls, declSignRows, delegations] = await Promise.all([
+  const [tasks, actions, rules, users, auditors, activeDecls, declSignRows, delegations, apiKeys] = await Promise.all([
     prisma.task.findMany({
       where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID, status: { notIn: ["DONE", "CLOSED"] } },
       include: { r_assignee: true, r_engagement: true },
@@ -44,6 +44,10 @@ export async function escalateOverdueWork() {
       where: { deleted: false, disabled: false, status: "ACTIVE", end_date: { not: null }, organization_id: DEMO_ORGANIZATION_ID },
       include: { r_delegate: true, r_principal: true },
     }),
+    prisma.apiKey.findMany({
+      where: { deleted: false, disabled: false, expires_at: { not: null }, organization_id: DEMO_ORGANIZATION_ID },
+      select: { id: true, name: true, expires_at: true, disabled: true, created_by: true },
+    }),
   ]);
   const byId = new Map(users.map((u) => [u.id, u]));
   const caeEmails = users.filter((u) => u.role === "org:chief_audit_executive").map((u) => u.email).filter(Boolean) as string[];
@@ -54,6 +58,7 @@ export async function escalateOverdueWork() {
   const caRules = rules.filter((r) => (r.entity_kind ?? "corrective_action") === "corrective_action");
   const declRules = rules.filter((r) => r.entity_kind === "declaration");
   const delegationRules = rules.filter((r) => r.entity_kind === "delegation");
+  const keyRules = rules.filter((r) => r.entity_kind === "api_key");
 
   type Notice = { kind: string; itemId: string; level: number; ruleId: string; to: string[]; cc: string[]; subject: string; reason: string; body: string };
   const notices: Notice[] = [];
@@ -216,6 +221,30 @@ export async function escalateOverdueWork() {
     });
   }
 
+  // --- API keys: reminder before the key expires ---
+  for (const k of apiKeys) {
+    const ctx = {
+      daysToDue: k.expires_at ? Math.floor((k.expires_at.getTime() - now.getTime()) / DAY) : null,
+      daysOverdue: null,
+      daysUnverified: null,
+      status: k.disabled ? "REVOKED" : "ACTIVE",
+    };
+    const winner = keyRules.filter((r) => r.trigger === "API_KEY_EXPIRY_DAYS" && ruleFires(r.trigger, r.days, ctx)).pop();
+    if (!winner) continue;
+    const level = keyRules.indexOf(winner) + 1;
+    const creator = k.created_by ? byId.get(k.created_by) : null;
+    const cc: string[] = [...adminEmails];
+    if (winner.notify_cae) cc.push(...caeEmails);
+    const reason = `API key "${k.name ?? "unnamed"}" expires in ${ctx.daysToDue} day${ctx.daysToDue === 1 ? "" : "s"}`;
+    notices.push({
+      kind: "api_key", itemId: k.id, level, ruleId: winner.id,
+      to: creator?.email ? [creator.email] : [fallback].filter(Boolean), cc,
+      subject: reason,
+      reason,
+      body: `${reason} — it will stop working on ${k.expires_at?.toISOString().slice(0, 10)}. Renew or replace it under Admin → API keys if it is still needed.`,
+    });
+  }
+
   // Deliver each notice once per level per recipient.
   let sent = 0;
   for (const n of notices) {
@@ -235,7 +264,7 @@ export async function escalateOverdueWork() {
     });
     await deliverEmail(row.id);
     await logAudit(
-      n.kind === "task" ? "Tasks" : n.kind === "declaration" ? "Engagement Auditor Declarations" : n.kind === "delegation" ? "Delegations" : "Corrective Actions",
+      n.kind === "task" ? "Tasks" : n.kind === "declaration" ? "Engagement Auditor Declarations" : n.kind === "delegation" ? "Delegations" : n.kind === "api_key" ? "Api Keys" : "Corrective Actions",
       n.itemId,
       "NOTIFICATION",
       { message: `${n.reason}: notification sent to ${to.join(", ") || cc.join(", ")}` },

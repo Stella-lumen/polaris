@@ -738,8 +738,14 @@ model ReviewNote {
 model ApiKey {
   id String   @id @default(ulid())
   name String?
+  purpose String?
   key_hash String?
   key_prefix String?
+  calls_30d Int?
+  calls_30d_since DateTime?
+  last_error String?
+  last_error_at DateTime?
+  test_flag_dismissed Boolean @default(false)
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   scopes Json

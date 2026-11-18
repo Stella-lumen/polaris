@@ -1905,7 +1905,7 @@ export async function approveLeave(id: string, approve: boolean) {
 
 // ---------- api keys (integration) ----------
 export async function createApiKey(formData: FormData) {
-  await requireRole(["org:admin"]);
+  const admin = await requireRole(["org:admin"]);
   const { createHash, randomBytes } = await import("node:crypto");
   const plain = `pk_${randomBytes(24).toString("hex")}`;
   const requested = formData.getAll("scopes").map(String).filter((s) => API_SCOPES.includes(s));
@@ -1913,22 +1913,70 @@ export async function createApiKey(formData: FormData) {
     data: {
       ...(await scope()),
       name: str(formData.get("name")),
+      purpose: str(formData.get("purpose")),
       key_hash: createHash("sha256").update(plain).digest("hex"),
       key_prefix: plain.slice(0, 10),
       scopes: requested.length ? requested : API_SCOPES,
       expires_at: date(formData.get("expires_at")) ?? new Date(Date.now() + 90 * 86400_000),
     },
   });
-  await logAudit("Api Keys", k.id, "INSERT", { name: k.name, scopes: k.scopes });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  const scopeWords = (k.scopes as string[]).map((s) => s.replace(/:read$/, "").replace(/_/g, " ")).join(", ");
+  await logAudit("Api Keys", k.id, "INSERT",
+    { message: `${maker} created the API key "${k.name ?? "unnamed"}" with read access to ${scopeWords || "everything"}` },
+    { userId: admin.id, recordLabel: k.name ?? undefined });
   revalidatePath("/admin/api-keys");
   return { key: plain };
 }
 
+export async function updateApiKey(id: string, formData: FormData) {
+  const admin = await requireRole(["org:admin"]);
+  const k = await prisma.apiKey.findUnique({ where: { id } });
+  if (!k || k.deleted) throw new Error("API key not found");
+  const purpose = str(formData.get("purpose"));
+  await prisma.apiKey.update({ where: { id }, data: { name: str(formData.get("name")) ?? k.name, purpose, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Api Keys", id, "UPDATE",
+    { message: `${maker} updated the API key "${k.name ?? "unnamed"}"${purpose ? ` — purpose: ${purpose}` : ""}` },
+    { userId: admin.id, recordLabel: k.name ?? undefined });
+  revalidatePath("/admin/api-keys");
+}
+
 export async function revokeApiKey(id: string) {
-  await requireRole(["org:admin"]);
+  const admin = await requireRole(["org:admin"]);
+  const k = await prisma.apiKey.findUnique({ where: { id } });
   const uid = await actorId();
   await prisma.apiKey.update({ where: { id }, data: { disabled: true, revoked_at: new Date(), updated_by: uid } });
-  await logAudit("Api Keys", id, "UPDATE", { disabled: true, revoked_at: new Date() });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Api Keys", id, "UPDATE",
+    { message: `${maker} revoked the API key "${k?.name ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: k?.name ?? undefined });
+  revalidatePath("/admin/api-keys");
+}
+
+/** Quiet expiry — sets the key's end date to now. Calls after this are refused
+ *  as expired, exactly like a natural expiry. Reversible by editing the date. */
+export async function expireApiKey(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const k = await prisma.apiKey.findUnique({ where: { id } });
+  if (!k || k.deleted) return;
+  await prisma.apiKey.update({ where: { id }, data: { expires_at: new Date(), updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Api Keys", id, "UPDATE",
+    { message: `${maker} expired the API key "${k.name ?? "unnamed"}" — calls with it are now refused` },
+    { userId: admin.id, recordLabel: k.name ?? undefined });
+  revalidatePath("/admin/api-keys");
+}
+
+/** The user decided a flagged key is real — hides the "Looks like a test key" flag. */
+export async function dismissTestKeyFlag(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const k = await prisma.apiKey.findUnique({ where: { id } });
+  await prisma.apiKey.update({ where: { id }, data: { test_flag_dismissed: true, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Api Keys", id, "UPDATE",
+    { message: `${maker} confirmed "${k?.name ?? "unnamed"}" is a real key, not a test key` },
+    { userId: admin.id, recordLabel: k?.name ?? undefined });
   revalidatePath("/admin/api-keys");
 }
 

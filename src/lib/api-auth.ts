@@ -37,8 +37,8 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
   const hash = createHash("sha256").update(key).digest("hex");
   const k = await prisma.apiKey.findFirst({ where: { key_hash: hash, deleted: false } });
   if (!k || k.disabled || (k.expires_at && k.expires_at < new Date())) {
-    const reason = !k ? "unknown key" : k.disabled ? "revoked key" : "expired key";
-    void auditAuthFail(requestId, k?.id ?? null, reason);
+    const reason = !k ? "unknown" : k.disabled ? "revoked" : "expired";
+    void refuse(requestId, k?.id ?? null, reason);
     return { error: err(401, "invalid_key", "The key is missing, wrong, revoked or expired.", requestId), requestId };
   }
 
@@ -50,6 +50,7 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
   }
   b.count++;
   if (b.count > RATE_LIMIT) {
+    void refuse(requestId, k.id, "rate_limited");
     return {
       error: err(429, "rate_limited", "Rate limit exceeded — wait and retry.", requestId, {
         "Retry-After": String(Math.ceil((b.reset - now) / 1000)),
@@ -60,22 +61,46 @@ export async function apiKeyAuth(req: Request, scope?: string): Promise<ApiError
 
   const scopes = Array.isArray(k.scopes) ? (k.scopes as string[]) : [];
   if (scope && !scopes.includes(scope)) {
-    void auditAuthFail(requestId, k.id, `insufficient scope: needed ${scope}`);
+    void refuse(requestId, k.id, "scope", scope);
     return { error: err(403, "insufficient_scope", `This key does not have the ${scope} scope.`, requestId), requestId };
   }
 
-  // Throttle last-used writes to at most once per minute per key.
-  if (!k.last_used_at || now - k.last_used_at.getTime() > WINDOW_MS) {
-    await prisma.apiKey.update({ where: { id: k.id }, data: { last_used_at: new Date() } });
+  const { bumpCallCount } = await import("@/lib/api-keys");
+  const bump = bumpCallCount(k);
+  await prisma.apiKey.update({
+    where: { id: k.id },
+    data: { last_used_at: new Date(), calls_30d: bump.calls_30d, calls_30d_since: bump.calls_30d_since },
+  });
+  if (!k.last_used_at) {
+    void auditUse(requestId, k.id, k.name, `was used for the first time — a call to ${scope ?? "the API"} succeeded`);
   }
   return { org: k.organization_id ?? DEMO_ORGANIZATION_ID, requestId };
 }
 
-/** Logs API auth failures to the audit trail — never the raw key. Fire-and-forget. */
+/** Logs API auth failures + stamps the key's last-error — never the raw key. Fire-and-forget. */
+async function refuse(requestId: string, keyId: string | null, kind: "unknown" | "revoked" | "expired" | "scope" | "rate_limited", scope?: string) {
+  const { refusalReason } = await import("@/lib/api-keys");
+  const reason = refusalReason(kind, scope);
+  try {
+    if (keyId) await prisma.apiKey.update({ where: { id: keyId }, data: { last_error: reason, last_error_at: new Date() } });
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit("Api Keys", keyId ?? "unknown", "AUTH_FAIL",
+      { message: kind === "unknown" ? "A call with an unrecognised API key was refused" : `A call was refused — ${reason.toLowerCase()}` },
+      { system: true });
+  } catch { /* auditing must never break auth */ }
+}
+
 async function auditAuthFail(requestId: string, keyId: string | null, reason: string) {
   try {
     const { logAudit } = await import("@/lib/audit");
     await logAudit("Api Keys", keyId ?? "unknown", "AUTH_FAIL", { reason, request_id: requestId }, { system: true });
+  } catch { /* auditing must never break auth */ }
+}
+
+async function auditUse(requestId: string, keyId: string, keyName: string | null, what: string) {
+  try {
+    const { logAudit } = await import("@/lib/audit");
+    await logAudit("Api Keys", keyId, "USE", { message: `The API key "${keyName ?? "unnamed"}" ${what}` }, { system: true });
   } catch { /* auditing must never break auth */ }
 }
 

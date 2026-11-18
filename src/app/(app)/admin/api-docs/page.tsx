@@ -80,7 +80,8 @@ function Table({ head, rows }: { head: string[]; rows: string[][] }) {
 export default async function ApiDocsPage() {
   const h = await headers();
   const proto = h.get("x-forwarded-proto") ?? "http";
-  const base = `${proto}://${h.get("host")}`;
+  const local = `${proto}://${h.get("host")}`;
+  const base = "https://your-server-address";
   const u = `${base}/api/v1/engagements?page_size=5`;
 
   const examples: [string, string][] = [
@@ -104,7 +105,10 @@ export default async function ApiDocsPage() {
         <h2 className="text-lg font-medium">Quick start</h2>
         <p className="text-sm text-muted-foreground">
           The REST API gives your BI tools and other systems scoped, read-only access to live audit data —
-          no manual exports. Base URL: <code>{base}/api/v1</code>. HTTPS is enforced in production.
+          no manual exports. Base URL: <code>https://your-server-address/api/v1</code> (replace with your
+          server&apos;s address — this copy is reachable at <code>{local}/api/v1</code>). HTTPS is not
+          configured in this build; in a production deployment it is enforced by the web server or proxy
+          in front of the application.
         </p>
         <CodeBlock title="List engagements" code={examples[0][1]} />
       </section>
@@ -169,13 +173,40 @@ export default async function ApiDocsPage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-medium">Power BI and Excel</h2>
+        <h2 className="text-lg font-medium">Integration guide</h2>
+
+        <h3 className="mt-1 text-sm font-semibold">1. Power BI or Excel with a key</h3>
         <ol className="list-inside list-decimal text-sm text-muted-foreground">
-          <li>Power BI: Get Data → Web → Advanced. URL: <code>{base}/api/v1/engagements</code>.</li>
-          <li>Add HTTP header: <code>x-api-key</code> = your key. Choose Anonymous auth.</li>
-          <li>Expand the <code>data</code> list into a table — refresh pulls live data.</li>
-          <li>Excel: Data → Get Data → From Other Sources → From Web, same header.</li>
+          <li>Create a key with only the scopes the report needs (e.g. <code>engagements:read</code>, <code>findings:read</code>, <code>reports:read</code>).</li>
+          <li>Power BI: Get Data → Web → <b>Advanced</b>. URL: <code>{base}/api/v1/engagements</code>.</li>
+          <li>Under HTTP request header parameters add <code>x-api-key</code> with your key value. Choose <b>Anonymous</b> authentication.</li>
+          <li>The response is <code>{"{ data: [...], meta: {...} }"}</code> — convert <code>data</code> to a table in Power Query and expand the records.</li>
+          <li>For more than one page, add <code>&amp;page=2</code> (and so on), or raise <code>page_size</code> (max 200).</li>
+          <li>Excel: Data → Get Data → From Other Sources → From Web → Advanced, same URL and header.</li>
+          <li>Refresh pulls live data. If a refresh fails, check the key&apos;s <b>Last error</b> on the API keys page.</li>
         </ol>
+
+        <h3 className="mt-3 text-sm font-semibold">2. Active Directory / Entra ID — the honest position</h3>
+        <p className="text-sm text-muted-foreground">
+          Polaris does <b>not</b> connect to Active Directory or Entra ID directly, and there is no
+          directory sign-in — users log in with an email and password. What exists is a
+          <b> file-based provisioning pipeline</b>: export directory users to JSON, then push the file
+          to <code>POST /api/v1/users/sync</code> with a <code>users:sync</code>-scoped key (see{" "}
+          <code>scripts/sync-ad-users.mjs</code>). Users are matched by email and updated; group names like{" "}
+          <code>AGR-IAA-AUDITORS</code> map to Polaris roles. With <code>deactivate_missing</code>, only
+          accounts created by the sync are deactivated — manually created users are never touched.
+          This has been tested against the sample export file, not a live directory. A production
+          deployment would drive it on a schedule from the customer&apos;s own export tooling (for
+          example a scheduled PowerShell export), or replace the file with a Microsoft Graph call —
+          that part is not built.
+        </p>
+
+        <h3 className="mt-3 text-sm font-semibold">3. What each scope exposes</h3>
+        <p className="text-sm text-muted-foreground">
+          All scopes are read-only except <code>users:sync</code> (the one write endpoint above).
+          A key only sees the data its scopes cover — everything else returns 403 and is written to
+          the audit trail. See the Scopes table above for the full list.
+        </p>
       </section>
     </div>
   );

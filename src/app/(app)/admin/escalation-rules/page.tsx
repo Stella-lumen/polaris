@@ -19,6 +19,7 @@ const TRIGGER_LABEL: Record<string, string> = {
   DECL_CONFLICT_OPEN_DAYS: "days a disclosed conflict waits for review",
   DECL_REDECLARE_DAYS: "days since last signing (annual re-declaration)",
   DELEGATION_EXPIRY_DAYS: "days before the delegation ends",
+  API_KEY_EXPIRY_DAYS: "days before the key expires",
 };
 
 const input = "w-20 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 disabled:opacity-60";
@@ -35,6 +36,7 @@ export default async function EscalationRulesPage() {
     { kind: "task", title: "Task reminders and escalations" },
     { kind: "declaration", title: "Declaration reminders and escalations" },
     { kind: "delegation", title: "Delegation expiry reminders" },
+    { kind: "api_key", title: "API key expiry reminders" },
   ];
 
   return (

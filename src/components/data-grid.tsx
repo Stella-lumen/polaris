@@ -37,7 +37,7 @@ function fmtCell(v: unknown): string {
   return s;
 }
 
-export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle" | "delete" | "toplan";
+export type RowAction = "edit" | "files" | "signoff" | "workflow" | "toggle" | "delete" | "toplan" | "expire";
 
 export type ToPlanConfig = {
   /** plan periods offered in the row dropdown */
@@ -237,6 +237,36 @@ function ToggleCell({ data, config }: { data: Record<string, unknown>; config: T
   );
 }
 
+export type ExpireConfig = { onExpire: (id: string) => Promise<unknown>; label?: string; confirm?: string };
+
+function ExpireCell({ data, config }: { data: Record<string, unknown>; config: ExpireConfig }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  if (!data.expirable) return null;
+  return (
+    <button
+      disabled={busy}
+      title={config.label ?? "Expire key"}
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (!confirm(config.confirm ?? "Expire this item?")) return;
+        setBusy(true);
+        try {
+          await config.onExpire(String(data.id));
+          router.refresh();
+        } catch (err) {
+          alert(err instanceof Error ? err.message : "Could not expire this item");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      className="text-xs text-neutral-500 underline decoration-dotted underline-offset-2 hover:text-neutral-700 disabled:opacity-50"
+    >
+      {config.label ?? "Expire"}
+    </button>
+  );
+}
+
 function DeleteCell({ data, config }: { data: Record<string, unknown>; config: DeleteConfig }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -309,6 +339,7 @@ function ActionsCell({
   toggle,
   deleteConfig,
   toPlan,
+  expireConfig,
   onNavigate,
 }: {
   data: unknown;
@@ -319,6 +350,7 @@ function ActionsCell({
   toggle?: ToggleConfig;
   deleteConfig?: DeleteConfig;
   toPlan?: ToPlanConfig;
+  expireConfig?: ExpireConfig;
   onNavigate: (id: string) => void;
 }) {
   const row = data as Record<string, unknown> & { id?: string; files?: { name?: string }[] };
@@ -342,6 +374,7 @@ function ActionsCell({
       {actions.includes("toggle") && toggle && <ToggleCell data={row} config={toggle} />}
       {actions.includes("delete") && deleteConfig && <DeleteCell data={row} config={deleteConfig} />}
       {actions.includes("toplan") && toPlan && <ToPlanCell data={row} config={toPlan} />}
+      {actions.includes("expire") && expireConfig && <ExpireCell data={row} config={expireConfig} />}
     </div>
   );
 }
@@ -357,6 +390,7 @@ export function DataGrid({
   toggle,
   deleteConfig,
   toPlan,
+  expireConfig,
   badgeMap,
   rowStyleRules,
   pageSize,
@@ -380,6 +414,7 @@ export function DataGrid({
   deleteConfig?: DeleteConfig;
   /** "Add to plan" dropdown on rows lacking planned_engagement_id */
   toPlan?: ToPlanConfig;
+  expireConfig?: ExpireConfig;
   /** render a field's value as a coloured badge: { field: { "VALUE": "tailwind classes" } } */
   badgeMap?: Record<string, Record<string, string>>;
   /** serializable row style rules: when row[field] === when, apply style (e.g. pink disabled rows) */
@@ -391,8 +426,8 @@ export function DataGrid({
 }) {
   const router = useRouter();
   const go = (id: string) => hrefPattern && router.push(hrefPattern.replace("{id}", id));
-  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0) + (rowActions?.includes("toplan") ? 1 : 0);
-  const actionWidth = rowActions?.includes("toplan") ? 130 : rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
+  const actionCount = (rowActions?.includes("edit") ? 1 : 0) + (rowActions?.includes("files") ? 1 : 0) + (rowActions?.includes("signoff") ? 1 : 0) + (rowActions?.includes("workflow") ? 1 : 0) + (rowActions?.includes("toggle") ? 1 : 0) + (rowActions?.includes("delete") ? 1 : 0) + (rowActions?.includes("toplan") ? 1 : 0) + (rowActions?.includes("expire") ? 1 : 0);
+  const actionWidth = rowActions?.includes("expire") ? 150 : rowActions?.includes("toplan") ? 130 : rowActions?.includes("workflow") ? 200 : rowActions?.includes("signoff") ? 140 : rowActions?.includes("toggle") ? 110 : actionCount > 1 ? 90 : 56;
   const cols: ColDef[] = [
     ...(rowActions?.length
       ? [{
@@ -407,7 +442,7 @@ export function DataGrid({
           resizable: false,
           suppressMovable: true,
           cellRenderer: (p: ICellRendererParams) => (
-            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} deleteConfig={deleteConfig} toPlan={toPlan} onNavigate={go} />
+            <ActionsCell data={p.data} actions={rowActions} filesEntity={filesEntity} signoff={signoff} workflow={workflow} toggle={toggle} deleteConfig={deleteConfig} toPlan={toPlan} expireConfig={expireConfig} onNavigate={go} />
           ),
         }]
       : []),

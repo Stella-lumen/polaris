@@ -28,5 +28,7 @@ export function ruleFires(
   // ctx.daysToDue = days until the delegation's end date.
   if (ctx.status === "EXPIRED" || ctx.status === "REVOKED") return false;
   if (trigger === "DELEGATION_EXPIRY_DAYS") return ctx.daysToDue != null && ctx.daysToDue >= 0 && ctx.daysToDue <= d;
+  // API key triggers — ctx.daysToDue = days until the key's expiry date.
+  if (trigger === "API_KEY_EXPIRY_DAYS") return ctx.daysToDue != null && ctx.daysToDue >= 0 && ctx.daysToDue <= d;
   return false;
 }

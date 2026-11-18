@@ -77,7 +77,11 @@ export function ApiKeyCreate() {
                   <input name="name" required placeholder="e.g. AD connector" className="rounded border border-neutral-300 px-3 py-2" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
-                  Expires (optional)
+                  Purpose
+                  <input name="purpose" placeholder="e.g. Power BI dashboard refresh" className="rounded border border-neutral-300 px-3 py-2" />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  Expires (optional — defaults to 90 days from today)
                   <input name="expires_at" type="date" className="rounded border border-neutral-300 px-3 py-2" />
                 </label>
                 <fieldset className="flex flex-col gap-1 text-sm">

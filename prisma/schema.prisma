@@ -509,6 +509,9 @@ model StrategicObjective {
   name String?
   description String?
   sort_order Int?
+  disabled Boolean @default(false)
+  is_sample Boolean @default(true)
+  confirmed_by String?
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   deleted Boolean  @default(false)

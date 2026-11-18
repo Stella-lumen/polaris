@@ -1157,11 +1157,74 @@ export async function logRiskExport(count: number) {
 }
 
 export async function createStrategicObjective(formData: FormData) {
-  await requireRole(["org:admin"]);
+  const admin = await requireRole(["org:admin"]);
   const o = await prisma.strategicObjective.create({
-    data: { ...(await scope()), name: str(formData.get("name")), description: str(formData.get("description")), sort_order: Number(formData.get("sort_order")) || null },
+    data: { ...(await scope()), name: str(formData.get("name")), description: str(formData.get("description")), sort_order: Number(formData.get("sort_order")) || null, is_sample: false },
   });
-  await logAudit("Strategic Objectives", o.id, "INSERT", o);
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Strategic Objectives", o.id, "INSERT",
+    { message: `${maker} added the strategic objective "${o.name ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: o.name ?? undefined });
+  revalidatePath("/admin/strategic-objectives");
+}
+
+export async function updateStrategicObjective(id: string, formData: FormData) {
+  const admin = await requireRole(["org:admin"]);
+  const o = await prisma.strategicObjective.findUnique({ where: { id } });
+  if (!o || o.deleted) throw new Error("Strategic objective not found");
+  const name = str(formData.get("name")) ?? o.name;
+  const description = str(formData.get("description"));
+  const sortOrder = Number(formData.get("sort_order")) || o.sort_order;
+  await prisma.strategicObjective.update({ where: { id }, data: { name, description: description ?? o.description, sort_order: sortOrder, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Strategic Objectives", id, "UPDATE",
+    { message: `${maker} edited the strategic objective "${name ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: name ?? undefined });
+  revalidatePath("/admin/strategic-objectives");
+}
+
+/** Deactivate/reactivate — deactivated objectives stay on record but can't be
+ *  chosen on new risks. Never deletes anything. */
+export async function toggleStrategicObjective(id: string, disabled: boolean) {
+  const admin = await requireRole(["org:admin"]);
+  const o = await prisma.strategicObjective.findUnique({ where: { id } });
+  if (!o || o.deleted) return;
+  await prisma.strategicObjective.update({ where: { id }, data: { disabled, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Strategic Objectives", id, "UPDATE",
+    { message: `${maker} ${disabled ? "deactivated" : "reactivated"} the strategic objective "${o.name ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: o.name ?? undefined });
+  revalidatePath("/admin/strategic-objectives");
+}
+
+/** Delete is only possible while no risk is linked — otherwise it is refused
+ *  with a plain-words reason, and the objective should be deactivated instead. */
+export async function deleteStrategicObjective(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const o = await prisma.strategicObjective.findUnique({ where: { id } });
+  if (!o || o.deleted) return;
+  const linked = await prisma.riskAssessment.count({ where: { strategic_objective_id: id, deleted: false } });
+  if (linked > 0) {
+    throw new Error(`"${o.name ?? "This objective"}" cannot be deleted — ${linked} risk${linked === 1 ? " is" : "s are"} linked to it. Deactivate it instead.`);
+  }
+  await prisma.strategicObjective.update({ where: { id }, data: { deleted: true, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Strategic Objectives", id, "DELETE",
+    { message: `${maker} removed the strategic objective "${o.name ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: o.name ?? undefined });
+  revalidatePath("/admin/strategic-objectives");
+}
+
+/** The user confirmed an objective is real, not a sample — removes the flag. */
+export async function confirmStrategicObjective(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const o = await prisma.strategicObjective.findUnique({ where: { id } });
+  if (!o || o.deleted) return;
+  await prisma.strategicObjective.update({ where: { id }, data: { is_sample: false, confirmed_by: admin.id, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Strategic Objectives", id, "UPDATE",
+    { message: `${maker} confirmed "${o.name ?? "unnamed"}" is a real objective, not a sample` },
+    { userId: admin.id, recordLabel: o.name ?? undefined });
   revalidatePath("/admin/strategic-objectives");
 }
 

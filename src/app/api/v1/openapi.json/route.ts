@@ -183,6 +183,19 @@ const spec = {
         },
       },
     },
+    "/strategic-objectives": {
+      get: {
+        tags: ["Strategic Objectives"],
+        summary: "List strategic objectives with linked-risk and coverage counts",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Objectives with ref, name, description, status, linked_risks, risks_in_plan and highest_residual_score. Scope: objectives:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks objectives:read" },
+        },
+      },
+    },
     "/declarations": {
       get: {
         tags: ["Declarations"],

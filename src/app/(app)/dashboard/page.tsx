@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   const scope = { deleted: false, organization_id: DEMO_ORGANIZATION_ID };
 
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const [engagements, findings, tasks, actions, allActions, risks, bands] = await Promise.all([
+  const [engagements, findings, tasks, actions, allActions, risks, bands, objectives] = await Promise.all([
     prisma.engagement.findMany({
       where: scope,
       include: { r_engagement_type: true },
@@ -52,10 +52,11 @@ export default async function DashboardPage() {
     prisma.correctiveAction.findMany({ where: scope, select: { status: true, due_date: true, source: true } }),
     prisma.riskAssessment.findMany({
       where: scope,
-      select: { id: true, auditable_entity: true, residual_score: true, residual_likelihood: true, residual_impact: true, linked_planned_engagement_id: true },
+      select: { id: true, auditable_entity: true, residual_score: true, residual_likelihood: true, residual_impact: true, linked_planned_engagement_id: true, strategic_objective_id: true },
       orderBy: { residual_score: "desc" },
     }),
     prisma.riskRatingBand.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, orderBy: { min_score: "asc" } }),
+    prisma.strategicObjective.findMany({ where: { deleted: false, disabled: false, organization_id: DEMO_ORGANIZATION_ID }, orderBy: { sort_order: "asc" }, select: { id: true, name: true, sort_order: true } }),
   ]);
 
   const completed = engagements.filter((e) => e.authorised_date != null);
@@ -86,6 +87,15 @@ export default async function DashboardPage() {
     if (r.residual_likelihood && r.residual_impact) heat[`${r.residual_likelihood}x${r.residual_impact}`] = (heat[`${r.residual_likelihood}x${r.residual_impact}`] ?? 0) + 1;
   }
   const heatCell = (s: number) => s <= 4 ? "bg-emerald-100 text-emerald-900" : s <= 9 ? "bg-amber-100 text-amber-900" : s <= 14 ? "bg-orange-200 text-orange-950" : "bg-red-200 text-red-950";
+
+  // Risks per strategic objective — count, covered count, and uncovered flags
+  const objectiveRows = objectives.map((o) => {
+    const linked = risks.filter((r) => r.strategic_objective_id === o.id);
+    const covered = linked.filter((r) => r.linked_planned_engagement_id).length;
+    return { id: o.id, name: `SO${o.sort_order ?? "?"} — ${o.name ?? "Not assigned"}`, total: linked.length, covered };
+  });
+  const unlinkedRisks = risks.filter((r) => !r.strategic_objective_id).length;
+  const maxObjectiveRisks = Math.max(1, ...objectiveRows.map((o) => o.total));
 
   // Queue supervisor notifications for overdue/near-due work (idempotent per item per day)
   const escalation = await escalateOverdueWork();
@@ -196,6 +206,37 @@ export default async function DashboardPage() {
                   </Link>
                 );
               })}
+            </div>
+          </div>
+          <div className="rounded-lg border p-4 lg:col-span-2">
+            <div className="font-medium">Risks per strategic objective</div>
+            <div className="mb-3 text-xs text-muted-foreground">
+              How the risk register maps to organisational goals — objectives with no risks or no audit coverage are flagged
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {objectiveRows.map((o) => (
+                <Link key={o.id} href={`/admin/strategic-objectives/${o.id}`} className="flex items-center gap-3 rounded border px-3 py-1.5 hover:bg-accent">
+                  <span className="w-64 min-w-0 truncate text-sm" title={o.name}>{o.name}</span>
+                  <div className="flex-1">
+                    <div className="h-2.5 rounded bg-orange-100">
+                      <div className="h-2.5 rounded bg-orange-500" style={{ width: `${(o.total / maxObjectiveRisks) * 100}%` }} />
+                    </div>
+                  </div>
+                  <span className="w-24 text-right text-xs text-muted-foreground">
+                    {o.total === 0 ? "No risks" : `${o.covered} of ${o.total} covered`}
+                  </span>
+                  {o.total === 0 ? (
+                    <span className="rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800">no risks linked</span>
+                  ) : o.covered === 0 ? (
+                    <span className="rounded bg-red-100 px-1.5 text-xs font-medium text-red-800">no audit coverage</span>
+                  ) : null}
+                </Link>
+              ))}
+              {unlinkedRisks > 0 && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {unlinkedRisks} risk{unlinkedRisks === 1 ? "" : "s"} not linked to any objective — assign them on the risk register.
+                </div>
+              )}
             </div>
           </div>
         </div>

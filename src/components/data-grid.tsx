@@ -270,7 +270,13 @@ function ExpireCell({ data, config }: { data: Record<string, unknown>; config: E
 function DeleteCell({ data, config }: { data: Record<string, unknown>; config: DeleteConfig }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  if (!data.deletable) return null;
+  if (!data.deletable) {
+    return data.delete_reason ? (
+      <button type="button" disabled title={String(data.delete_reason)} className="cursor-not-allowed text-neutral-300">
+        <Trash2 className="h-4 w-4" />
+      </button>
+    ) : null;
+  }
   return (
     <button
       disabled={busy}

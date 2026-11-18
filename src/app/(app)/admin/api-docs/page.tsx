@@ -17,6 +17,7 @@ const SCOPES: [string, string][] = [
   ["notifications:read", "Notification outbox and escalation rules"],
   ["auditlogs:read", "Audit trail entries"],
   ["delegations:read", "Delegated preparer arrangements"],
+  ["objectives:read", "Strategic objectives and their risk coverage"],
   ["users:sync", "Directory provisioning (POST only)"],
 ];
 
@@ -27,6 +28,7 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/engagements/{id}/declaration-status", "Signing status per member"],
   ["GET", "/declarations", "Declarations + signing counts"],
   ["GET", "/delegations", "Delegations: delegate, principal, scope, dates, status"],
+  ["GET", "/strategic-objectives", "Objectives with linked-risk and coverage counts"],
   ["GET", "/engagement-types", "Engagement types + default-config counts"],
   ["GET", "/engagement-types/{id}", "Type defaults: templates, checklist, budget guide"],
   ["GET", "/audit-plans", "Annual audit plans"],

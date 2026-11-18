@@ -67,6 +67,20 @@ const spec = {
         },
       },
     },
+    "/engagements/{id}/workspace": {
+      get: {
+        tags: ["Engagements"],
+        summary: "Engagement workspace summary: lead, team, budget, progress, counts, approvals, working papers",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": { description: "Workspace summary with counts (tasks, findings, open/overdue actions), budget vs spend, linked risks, planning/report approval and working papers. Scope: engagements:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks engagements:read" },
+          "404": { description: "Not found" },
+        },
+      },
+    },
     "/audit-plans": listGet("Planning", "List annual audit plans", "audit-plan:read"),
     "/risk-assessments": {
       get: {

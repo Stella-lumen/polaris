@@ -1075,6 +1075,17 @@ export async function markWorkingPaperReviewed(id: string, engagementId: string)
   revalidatePath(`/engagements/${engagementId}/working-papers`);
 }
 
+/** Save engagement objectives and scope. */
+export async function updateEngagementScope(engagementId: string, formData: FormData) {
+  const user = await requireUser();
+  await prisma.engagement.update({
+    where: { id: engagementId },
+    data: { objectives: str(formData.get("objectives")), scope_text: str(formData.get("scope_text")), updated_by: user.id },
+  });
+  await logAudit("Engagement", engagementId, "UPDATE", { objectives: formData.get("objectives"), scope_text: formData.get("scope_text"), by: user.id });
+  revalidatePath(`/engagements/${engagementId}/planning`);
+}
+
 /** Approve the planning stage of an engagement (supervisor only). */
 export async function approveEngagementPlanning(engagementId: string) {
   const user = await requireUser();

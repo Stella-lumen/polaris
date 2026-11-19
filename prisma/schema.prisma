@@ -530,6 +530,11 @@ model RiskRatingBand {
   max_score Int?
   color String?
   sort_order Int?
+  meaning String?
+  expected_response String?
+  disabled Boolean @default(false)
+  is_sample Boolean @default(false)
+  is_alert_floor Boolean @default(false)
   r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
   organization_id   String?
   deleted Boolean  @default(false)

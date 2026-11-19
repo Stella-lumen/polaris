@@ -18,6 +18,7 @@ const SCOPES: [string, string][] = [
   ["auditlogs:read", "Audit trail entries"],
   ["delegations:read", "Delegated preparer arrangements"],
   ["objectives:read", "Strategic objectives and their risk coverage"],
+  ["bands:read", "Risk rating bands, meanings and alert threshold"],
   ["users:sync", "Directory provisioning (POST only)"],
 ];
 
@@ -29,6 +30,7 @@ const ENDPOINTS: [string, string, string][] = [
   ["GET", "/declarations", "Declarations + signing counts"],
   ["GET", "/delegations", "Delegations: delegate, principal, scope, dates, status"],
   ["GET", "/strategic-objectives", "Objectives with linked-risk and coverage counts"],
+  ["GET", "/risk-rating-bands", "Rating bands: ranges, colours, alert floor, risk counts"],
   ["GET", "/engagement-types", "Engagement types + default-config counts"],
   ["GET", "/engagement-types/{id}", "Type defaults: templates, checklist, budget guide"],
   ["GET", "/audit-plans", "Annual audit plans"],

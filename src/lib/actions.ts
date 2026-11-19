@@ -7,6 +7,7 @@ import { actorId, requireUser, requireRole, canAuthorise, hashPassword } from "@
 import { API_SCOPES } from "@/lib/api-scopes";
 import { validatePeriod, canTransition, typeLabel } from "@/lib/period-validation";
 import { isEffective, allocationBlock, canReviewConflict } from "@/lib/declarations";
+import { bandCoverageProblems } from "@/lib/risk";
 
 async function scope() {
   const uid = await actorId();
@@ -1229,18 +1230,123 @@ export async function confirmStrategicObjective(id: string) {
 }
 
 export async function createRiskRatingBand(formData: FormData) {
-  await requireRole(["org:admin"]);
+  const admin = await requireRole(["org:admin"]);
+  const candidate = {
+    min_score: Number(formData.get("min_score")) || null,
+    max_score: Number(formData.get("max_score")) || null,
+  };
+  const existing = await prisma.riskRatingBand.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID } });
+  const problems = bandCoverageProblems(existing, candidate);
+  if (problems.length) throw new Error(problems.join(". "));
   const b = await prisma.riskRatingBand.create({
     data: {
       ...(await scope()),
       label: str(formData.get("label")),
-      min_score: Number(formData.get("min_score")) || null,
-      max_score: Number(formData.get("max_score")) || null,
+      min_score: candidate.min_score,
+      max_score: candidate.max_score,
       color: str(formData.get("color")),
       sort_order: Number(formData.get("sort_order")) || null,
+      meaning: str(formData.get("meaning")),
+      expected_response: str(formData.get("expected_response")),
     },
   });
-  await logAudit("Risk Rating Bands", b.id, "INSERT", b);
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Risk Rating Bands", b.id, "INSERT",
+    { message: `${maker} added the rating band "${b.label ?? "unnamed"}" covering scores ${b.min_score} to ${b.max_score}` },
+    { userId: admin.id, recordLabel: b.label ?? undefined });
+  revalidatePath("/admin/risk-bands");
+}
+
+export async function updateRiskRatingBand(id: string, formData: FormData) {
+  const admin = await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.findUnique({ where: { id } });
+  if (!b || b.deleted) throw new Error("Rating band not found");
+  const candidate = {
+    id,
+    min_score: Number(formData.get("min_score")) || b.min_score,
+    max_score: Number(formData.get("max_score")) || b.max_score,
+  };
+  const existing = await prisma.riskRatingBand.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID } });
+  const problems = bandCoverageProblems(existing, candidate);
+  if (problems.length) throw new Error(problems.join(". "));
+  const label = str(formData.get("label")) ?? b.label;
+  await prisma.riskRatingBand.update({
+    where: { id },
+    data: {
+      label, min_score: candidate.min_score, max_score: candidate.max_score,
+      color: str(formData.get("color")) ?? b.color,
+      sort_order: Number(formData.get("sort_order")) || b.sort_order,
+      meaning: str(formData.get("meaning")) ?? b.meaning,
+      expected_response: str(formData.get("expected_response")) ?? b.expected_response,
+      updated_by: admin.id, updated_at: new Date(),
+    },
+  });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  const rangeChanged = candidate.min_score !== b.min_score || candidate.max_score !== b.max_score;
+  await logAudit("Risk Rating Bands", id, "UPDATE",
+    { message: rangeChanged
+        ? `${maker} changed the "${label ?? "unnamed"}" band from ${b.min_score}–${b.max_score} to ${candidate.min_score}–${candidate.max_score}`
+        : `${maker} edited the rating band "${label ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: label ?? undefined });
+  revalidatePath("/admin/risk-bands");
+}
+
+export async function toggleRiskRatingBand(id: string, disabled: boolean) {
+  const admin = await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.findUnique({ where: { id } });
+  if (!b || b.deleted) return;
+  await prisma.riskRatingBand.update({ where: { id }, data: { disabled, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Risk Rating Bands", id, "UPDATE",
+    { message: `${maker} ${disabled ? "deactivated" : "reactivated"} the rating band "${b.label ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: b.label ?? undefined });
+  revalidatePath("/admin/risk-bands");
+}
+
+/** Sets which band triggers high-risk alerts; exactly one band holds the flag. */
+export async function setAlertFloorBand(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.findUnique({ where: { id } });
+  if (!b || b.deleted || b.disabled) throw new Error("Rating band not found");
+  await prisma.$transaction([
+    prisma.riskRatingBand.updateMany({ where: { organization_id: DEMO_ORGANIZATION_ID }, data: { is_alert_floor: false } }),
+    prisma.riskRatingBand.update({ where: { id }, data: { is_alert_floor: true, updated_by: admin.id, updated_at: new Date() } }),
+  ]);
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Risk Rating Bands", id, "UPDATE",
+    { message: `${maker} set high-risk alerts to start from the "${b.label ?? "unnamed"}" band (${b.min_score}+)` },
+    { userId: admin.id, recordLabel: b.label ?? undefined });
+  revalidatePath("/admin/risk-bands");
+}
+
+/** Deleting is refused while any risk's score falls inside the band. */
+export async function deleteRiskRatingBand(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.findUnique({ where: { id } });
+  if (!b || b.deleted) return;
+  const risks = await prisma.riskAssessment.findMany({ where: { deleted: false, organization_id: DEMO_ORGANIZATION_ID }, select: { residual_score: true } });
+  const used = risks.filter((r) => r.residual_score != null && r.residual_score >= (b.min_score ?? 0) && r.residual_score <= (b.max_score ?? 999)).length;
+  if (used > 0) {
+    throw new Error(`The "${b.label ?? "unnamed"}" band cannot be deleted — ${used} risk${used === 1 ? " sits" : "s sit"} inside it. Deactivate it instead.`);
+  }
+  await prisma.riskRatingBand.update({ where: { id }, data: { deleted: true, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Risk Rating Bands", id, "DELETE",
+    { message: `${maker} removed the rating band "${b.label ?? "unnamed"}"` },
+    { userId: admin.id, recordLabel: b.label ?? undefined });
+  revalidatePath("/admin/risk-bands");
+}
+
+/** Confirms a band's wording is real, not sample text — removes the Sample flag. */
+export async function confirmRiskRatingBand(id: string) {
+  const admin = await requireRole(["org:admin"]);
+  const b = await prisma.riskRatingBand.findUnique({ where: { id } });
+  if (!b || b.deleted) return;
+  await prisma.riskRatingBand.update({ where: { id }, data: { is_sample: false, updated_by: admin.id, updated_at: new Date() } });
+  const maker = `${admin.first_name ?? ""} ${admin.last_name ?? ""}`.trim() || admin.email;
+  await logAudit("Risk Rating Bands", id, "UPDATE",
+    { message: `${maker} confirmed the "${b.label ?? "unnamed"}" band wording is final` },
+    { userId: admin.id, recordLabel: b.label ?? undefined });
   revalidatePath("/admin/risk-bands");
 }
 

@@ -196,6 +196,19 @@ const spec = {
         },
       },
     },
+    "/risk-rating-bands": {
+      get: {
+        tags: ["Risk Rating Bands"],
+        summary: "List score bands with meaning, alert floor and risk counts",
+        security: [{ ApiKeyAuth: [] }],
+        parameters: [...listParams],
+        responses: {
+          "200": { description: "Bands with label, score range, colour, meaning, expected_response, alerts_start_here, risks_in_band and risks_in_plan. Scope: bands:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks bands:read" },
+        },
+      },
+    },
     "/declarations": {
       get: {
         tags: ["Declarations"],

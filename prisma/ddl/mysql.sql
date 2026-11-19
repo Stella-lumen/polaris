@@ -1523,3 +1523,45 @@ ALTER TABLE `delegation` ADD CONSTRAINT `delegation_principal_user_id_fkey` FORE
 ALTER TABLE `delegation` ADD CONSTRAINT `delegation_engagement_id_fkey` FOREIGN KEY (`engagement_id`) REFERENCES `engagement`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE `delegation` ADD CONSTRAINT `delegation_revoked_by_user_id_fkey` FOREIGN KEY (`revoked_by_user_id`) REFERENCES `user`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE `delegation` ADD CONSTRAINT `delegation_organization_id_fkey` FOREIGN KEY (`organization_id`) REFERENCES `organization`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE `saved_report` (
+    `id` VARCHAR(191) NOT NULL,
+    `name` VARCHAR(191),
+    `report_id` VARCHAR(191),
+    `filters_json` JSON,
+    `shared` BOOLEAN NOT NULL DEFAULT false,
+    `user_id` VARCHAR(191),
+    `organization_id` VARCHAR(191),
+    `disabled` BOOLEAN NOT NULL DEFAULT false,
+    `deleted` BOOLEAN NOT NULL DEFAULT false,
+    `created_by` VARCHAR(191),
+    `created_at` DATETIME(3),
+    `updated_by` VARCHAR(191),
+    `updated_at` DATETIME(3),
+    `deleted_by` VARCHAR(191),
+    `deleted_at` DATETIME(3),
+    PRIMARY KEY (`id`)
+);
+CREATE TABLE `scheduled_report` (
+    `id` VARCHAR(191) NOT NULL,
+    `name` VARCHAR(191),
+    `report_id` VARCHAR(191),
+    `filters_json` JSON,
+    `format` VARCHAR(191),
+    `recipients_json` JSON,
+    `cadence` VARCHAR(191),
+    `day_of_month` INTEGER,
+    `next_run_at` DATETIME(3),
+    `last_run_at` DATETIME(3),
+    `paused` BOOLEAN NOT NULL DEFAULT false,
+    `organization_id` VARCHAR(191),
+    `disabled` BOOLEAN NOT NULL DEFAULT false,
+    `deleted` BOOLEAN NOT NULL DEFAULT false,
+    `created_by` VARCHAR(191),
+    `created_at` DATETIME(3),
+    `updated_by` VARCHAR(191),
+    `updated_at` DATETIME(3),
+    `deleted_by` VARCHAR(191),
+    `deleted_at` DATETIME(3),
+    PRIMARY KEY (`id`)
+);

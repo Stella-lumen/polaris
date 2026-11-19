@@ -840,8 +840,56 @@ model Organization {
   escalationRules_organization   EscalationRule[] @relation("organization")
   auditLogs_organization   AuditLog[] @relation("organization")
   sentEmails_organization   SentEmail[] @relation("organization")
+  savedReports_organization   SavedReport[] @relation("organization")
+  scheduledReports_organization   ScheduledReport[] @relation("organization")
   users_organization   User[] @relation("organization")
   @@map("organization")
+}
+
+model SavedReport {
+  id String   @id @default(ulid())
+  name String?
+  report_id String?
+  filters_json Json?
+  shared Boolean  @default(false)
+  r_user   User? @relation("saved_report_user", fields: [user_id], references: [id])
+  user_id   String?
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("saved_report")
+}
+
+model ScheduledReport {
+  id String   @id @default(ulid())
+  name String?
+  report_id String?
+  filters_json Json?
+  format String?
+  recipients_json Json
+  cadence String?
+  day_of_month Int?
+  next_run_at DateTime?
+  last_run_at DateTime?
+  paused Boolean  @default(false)
+  r_organization   Organization? @relation("organization", fields: [organization_id], references: [id])
+  organization_id   String?
+  disabled Boolean  @default(false)
+  deleted Boolean  @default(false)
+  created_by String?
+  created_at DateTime?
+  updated_by String?
+  updated_at DateTime?
+  deleted_by String?
+  deleted_at DateTime?
+  @@map("scheduled_report")
 }
 
 model SentEmail {
@@ -909,6 +957,7 @@ model User {
   reviewNotes_verified_by_cae   ReviewNote[] @relation("verified_by_cae")
   reviewNotes_reviewer_cae   ReviewNote[] @relation("reviewer_cae")
   auditLogs_user   AuditLog[] @relation("user")
+  savedReports_user   SavedReport[] @relation("saved_report_user")
   riskAssessments_assessed_by   RiskAssessment[] @relation("risk_assessed_by")
   riskAssessments_risk_owner   RiskAssessment[] @relation("risk_owner")
   correctiveActions_owner   CorrectiveAction[] @relation("corrective_action_owner")

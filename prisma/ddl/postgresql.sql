@@ -1541,3 +1541,45 @@ ALTER TABLE "delegation" ADD CONSTRAINT "delegation_principal_user_id_fkey" FORE
 ALTER TABLE "delegation" ADD CONSTRAINT "delegation_engagement_id_fkey" FOREIGN KEY ("engagement_id") REFERENCES "engagement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "delegation" ADD CONSTRAINT "delegation_revoked_by_user_id_fkey" FOREIGN KEY ("revoked_by_user_id") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "delegation" ADD CONSTRAINT "delegation_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE "saved_report" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "report_id" TEXT,
+    "filters_json" JSONB,
+    "shared" BOOLEAN NOT NULL DEFAULT false,
+    "user_id" TEXT,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMP(3),
+    CONSTRAINT "saved_report_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "scheduled_report" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "report_id" TEXT,
+    "filters_json" JSONB,
+    "format" TEXT,
+    "recipients_json" JSONB,
+    "cadence" TEXT,
+    "day_of_month" INTEGER,
+    "next_run_at" TIMESTAMP(3),
+    "last_run_at" TIMESTAMP(3),
+    "paused" BOOLEAN NOT NULL DEFAULT false,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" TIMESTAMP(3),
+    "updated_by" TEXT,
+    "updated_at" TIMESTAMP(3),
+    "deleted_by" TEXT,
+    "deleted_at" TIMESTAMP(3),
+    CONSTRAINT "scheduled_report_pkey" PRIMARY KEY ("id")
+);

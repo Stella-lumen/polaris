@@ -52,7 +52,7 @@ function NavLink({ href, label, icon: Icon, active, indent }: {
       } ${active ? "bg-orange-500/15 font-medium text-orange-600" : ""}`}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      {label}
+      <span className="min-w-0 truncate">{label}</span>
     </Link>
   );
 }
@@ -107,7 +107,7 @@ export function Sidebar({
           <PanelLeft className="h-4 w-4" />
         </button>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-auto px-3 text-sm">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 text-sm">
         <NavLink href="/dashboard" label="Dashboard" icon={LayoutDashboard} active={isActive("/dashboard")} />
         {showAdmin && (
           <>
@@ -140,7 +140,7 @@ export function Sidebar({
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-              <div className="absolute bottom-full left-0 z-50 mb-2 w-64 overflow-hidden rounded-xl border bg-background shadow-lg">
+              <div className="absolute bottom-full left-0 right-0 z-50 mb-2 overflow-hidden rounded-xl border bg-background shadow-lg">
                 <div className="flex items-center gap-3 border-b p-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600 text-sm font-semibold text-white">
                     {initials}

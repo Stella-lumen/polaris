@@ -827,3 +827,45 @@ CREATE TABLE "delegation" (
     CONSTRAINT "delegation_revoked_by_user_id_fkey" FOREIGN KEY ("revoked_by_user_id") REFERENCES "user" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "delegation_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organization" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
+
+CREATE TABLE "saved_report" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "report_id" TEXT,
+    "filters_json" TEXT,
+    "shared" BOOLEAN NOT NULL DEFAULT false,
+    "user_id" TEXT,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" DATETIME,
+    "updated_by" TEXT,
+    "updated_at" DATETIME,
+    "deleted_by" TEXT,
+    "deleted_at" DATETIME,
+    CONSTRAINT "saved_report_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE "scheduled_report" (
+    "id" TEXT NOT NULL,
+    "name" TEXT,
+    "report_id" TEXT,
+    "filters_json" TEXT,
+    "format" TEXT,
+    "recipients_json" TEXT,
+    "cadence" TEXT,
+    "day_of_month" INTEGER,
+    "next_run_at" DATETIME,
+    "last_run_at" DATETIME,
+    "paused" BOOLEAN NOT NULL DEFAULT false,
+    "organization_id" TEXT,
+    "disabled" BOOLEAN NOT NULL DEFAULT false,
+    "deleted" BOOLEAN NOT NULL DEFAULT false,
+    "created_by" TEXT,
+    "created_at" DATETIME,
+    "updated_by" TEXT,
+    "updated_at" DATETIME,
+    "deleted_by" TEXT,
+    "deleted_at" DATETIME,
+    CONSTRAINT "scheduled_report_pkey" PRIMARY KEY ("id")
+);

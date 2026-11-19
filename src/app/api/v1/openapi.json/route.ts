@@ -342,6 +342,41 @@ const spec = {
         },
       },
     },
+    "/reports": {
+      get: {
+        tags: ["Reports"],
+        summary: "List available reports",
+        security: [{ ApiKeyAuth: [] }],
+        responses: {
+          "200": { description: "Report catalogue: id, title, group, description and supported filters. Scope: reports:read" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks reports:read" },
+        },
+      },
+    },
+    "/reports/{id}": {
+      get: {
+        tags: ["Reports"],
+        summary: "Run a report and return its rows",
+        security: [{ ApiKeyAuth: [] }],
+        description:
+          "Returns the report's filtered rows plus summary stats. Query params: page, page_size, and any filter the report supports " +
+          "(period, engagement, status, engagement_type, lead_auditor, risk_rating, category, source, auditor, assignee, " +
+          "activity_type, owner, overdue, report_year, search). " +
+          "The System Activity Log (id system-activity) is excluded from reports:read — it requires the admin-only audit-logs:read scope.",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", default: 50, maximum: 200 } },
+        ],
+        responses: {
+          "200": { description: "data: report rows; meta: report, summary, filters_applied, page, page_size, total, data_as_at" },
+          "401": { description: "Missing, revoked or expired key" },
+          "403": { description: "Key lacks reports:read (or audit-logs:read for the activity log)" },
+          "404": { description: "Unknown report id" },
+        },
+      },
+    },
     "/users/sync": {
       post: {
         tags: ["Provisioning"],
